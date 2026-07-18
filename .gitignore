@@ -3,3 +3,4 @@
 *.iso
 isodir/
 serial.log
+limine-bin/

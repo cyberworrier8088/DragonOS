@@ -1,6 +1,6 @@
 # DragonOS
 
-DragonOS is a monolithic, 32-bit x86 operating system kernel designed to run on IBM PC-compatible hardware. It is built as a freestanding application conforming to the Multiboot 1 specification, booting via the GRUB bootloader.
+DragonOS is a monolithic, 32-bit x86 operating system kernel designed to run on IBM PC-compatible hardware. It is built as a freestanding application conforming to the Multiboot 1 specification, booting via the Limine bootloader.
 
 The operating system initializes descriptor tables (GDT and IDT), configures hardware interrupt vectors via remapping the PIC, installs device drivers for standard console components, and runs an interactive command-line shell.
 
@@ -36,7 +36,7 @@ Install the required utilities:
 
 ```bash
 sudo apt update
-sudo apt install build-essential nasm grub-pc-bin xorriso qemu-system-x86
+sudo apt install build-essential nasm git xorriso qemu-system-x86
 ```
 
 ### Build Commands
@@ -78,7 +78,7 @@ You can launch the compiled ISO in QEMU. Choose the run command suited to your t
 Once DragonOS boots, you are presented with the `dragonos>` prompt. The following commands are supported:
 
 *   **help**: Lists all available commands.
-*   **about**: Displays detailed kernel metadata, layout, and architecture versions.
+*   **about**: Displays detailed kernel metadata, layout, and architecture versions. (Bootloader: Limine)
 *   **clear**: Clears the console screen and repositions the cursor.
 *   **ticks**: Prints the total number of hardware timer ticks elapsed since system boot.
 *   **ping**: Simple diagnostic command which prints "pong!".

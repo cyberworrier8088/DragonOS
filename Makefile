@@ -53,11 +53,21 @@ dragonos.bin: $(OBJS)
 verify: dragonos.bin
 	grub-file --is-x86-multiboot dragonos.bin
 
-dragonos.iso: dragonos.bin grub.cfg
-	mkdir -p isodir/boot/grub
+limine-bin/limine:
+	git clone https://github.com/limine-bootloader/limine.git --branch=v8.7.0-binary --depth=1 limine-bin
+	$(MAKE) -C limine-bin
+
+dragonos.iso: dragonos.bin limine.conf limine-bin/limine
+	mkdir -p isodir/boot
 	cp dragonos.bin isodir/boot/
-	cp grub.cfg isodir/boot/grub/
-	grub-mkrescue -o $@ isodir
+	cp limine.conf isodir/boot/
+	cp limine-bin/limine-bios.sys isodir/boot/
+	cp limine-bin/limine-bios-cd.bin isodir/boot/
+	xorriso -as mkisofs \
+		-b boot/limine-bios-cd.bin \
+		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		-o $@ isodir
+	./limine-bin/limine bios-install $@
 
 run: dragonos.iso
 	qemu-system-i386 -cdrom dragonos.iso

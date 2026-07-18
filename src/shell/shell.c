@@ -37,7 +37,7 @@ static void execute_command(char* input) {
     } else if (strcmp(input, "about") == 0) {
         terminal_writestring("DragonOS x86 Kernel (32-bit)\n");
         terminal_writestring("Build date  : July 2026\n");
-        terminal_writestring("Bootloader  : Multiboot 1 compliant (GRUB)\n");
+        terminal_writestring("Bootloader  : Multiboot 1 compliant (Limine)\n");
         terminal_writestring("Design      : Monolithic architecture & modular drivers\n");
     } else if (strcmp(input, "clear") == 0) {
         terminal_clear();
