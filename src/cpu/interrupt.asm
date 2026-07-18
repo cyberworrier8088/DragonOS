@@ -30,7 +30,9 @@ isr_common_stub:
     mov es, ax
     mov fs, ax
     mov gs, ax
+    push esp        ; Push stack pointer to pass registers_t* parameter
     call isr_handler
+    add esp, 4      ; Clean up the pushed argument
     pop eax         ; Restore original data segment descriptor
     mov ds, ax
     mov es, ax
@@ -50,7 +52,9 @@ irq_common_stub:
     mov es, ax
     mov fs, ax
     mov gs, ax
+    push esp        ; Push stack pointer to pass registers_t* parameter
     call irq_handler
+    add esp, 4      ; Clean up the pushed argument
     pop eax         ; Restore original data segment descriptor
     mov ds, ax
     mov es, ax
