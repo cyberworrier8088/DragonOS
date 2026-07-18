@@ -3,29 +3,31 @@
 
 #include <stdint.h>
 
-/* Structure defining an IDT gate descriptor. */
+/* Structure defining a 64-bit IDT gate descriptor. */
 struct idt_entry_struct {
-    uint16_t base_lo;             // The lower 16 bits of the ISR address
+    uint16_t base_lo;             // Offset bits 0-15
     uint16_t sel;                 // Kernel segment selector (0x08)
-    uint8_t  always0;             // Reserved, always zero
-    uint8_t  flags;               // Gate flags (type, privilege levels, present bit)
-    uint16_t base_hi;             // The upper 16 bits of the ISR address
+    uint8_t  ist;                 // Interrupt Stack Table offset, unused
+    uint8_t  flags;               // Gate flags (0x8E for 64-bit Interrupt Gate)
+    uint16_t base_mid;            // Offset bits 16-31
+    uint32_t base_hi;             // Offset bits 32-63
+    uint32_t always0;             // Reserved, always zero
 } __attribute__((packed));
 typedef struct idt_entry_struct idt_entry_t;
 
-/* Structure pointing to our array of descriptors, loaded into IDTR. */
+/* Structure pointing to the array of 64-bit descriptors. */
 struct idt_ptr_struct {
-    uint16_t limit;               // Number of descriptors minus 1
-    uint32_t base;                // Base address of the array
+    uint16_t limit;               // Limit (size - 1)
+    uint64_t base;                // 64-bit base address
 } __attribute__((packed));
 typedef struct idt_ptr_struct idt_ptr_t;
 
-/* Register frame layout pushed onto the stack during interrupts. */
+/* 64-bit register frame pushed onto the stack during interrupts. */
 struct registers {
-    uint32_t ds;                                      // Data segment selector saved manually
-    uint32_t edi, esi, ebp, esp, ebx, edx, ecx, eax;  // Registers saved by pusha
-    uint32_t int_no, err_code;                        // Interrupt vector number and optional error code
-    uint32_t eip, cs, eflags, useresp, ss;            // Saved automatically by the CPU
+    uint64_t r15, r14, r13, r12, r11, r10, r9, r8;
+    uint64_t rbp, rdi, rsi, rdx, rcx, rbx, rax;
+    uint64_t int_no, err_code;
+    uint64_t rip, cs, rflags, rsp, ss;
 };
 typedef struct registers registers_t;
 

@@ -1,21 +1,20 @@
 # DragonOS
 
-DragonOS is a monolithic, 32-bit x86 operating system kernel designed to run on IBM PC-compatible hardware. It is built as a freestanding application conforming to the Multiboot 1 specification, booting via the Limine bootloader.
+DragonOS is a monolithic, 64-bit x86_64 operating system kernel designed to run on modern PC-compatible hardware. It is built as a freestanding application conforming to the Multiboot 1 specification, booting via the Limine bootloader.
 
-The operating system initializes descriptor tables (GDT and IDT), configures hardware interrupt vectors via remapping the PIC, installs device drivers for standard console components, and runs an interactive command-line shell.
+The operating system bootstraps in 32-bit mode, sets up page directories mapping the first 2 MiB identity mapped, transitions to 64-bit long mode, re-routes PIC hardware interrupts to 64-bit IDT handlers, and starts an interactive command shell.
 
 ## Architecture and Source Layout
 
 The project source files are organized into modular domains:
 
-*   **src/boot.asm**: Assembly bootstrap code containing the Multiboot header, stack space reservation (16 KiB), segment initialization, and the jump to `kernel_main`.
+*   **src/boot.asm**: Assembly bootstrap code containing the Multiboot header, 64-bit GDT, page directory definitions (PML4, PDPT, PD with 2 MiB Huge Page mapping), long mode switch sequence, stack space reservation (16 KiB), and the far jump to 64-bit `kernel_main`.
 *   **src/linker.ld**: Linker script specifying physical memory section layout. It positions the bootloader header and kernel code starting at the 1 MiB boundary.
 *   **src/kernel.c**: Main C execution entry point, orchestrating hardware setup and the interactive shell loop.
 *   **src/cpu/**: Core CPU instruction abstractions and hardware descriptor tables:
     *   *ports.c / ports.h*: Low-level port input/output assembly wrappers (`inb`, `outb`, `inw`, `outw`).
-    *   *gdt.c / gdt.h*: Global Descriptor Table configuration defining null, kernel code, kernel data, user code, and user data segments.
-    *   *idt.c / idt.h*: Interrupt Descriptor Table and Interrupt Service Routine (ISR) callbacks.
-    *   *interrupt.asm*: Low-level assembly wrappers saving registers, re-routing hardware interrupt interrupts (IRQs 0-15), and performing the `iret` sequence.
+    *   *idt.c / idt.h*: 64-bit Interrupt Descriptor Table (16-byte gate entries) and Interrupt Service Routine (ISR) callbacks.
+    *   *interrupt.asm*: Low-level assembly wrappers saving 64-bit registers, passing pointers via `rdi` (System V AMD64 ABI), and performing the `iretq` sequence.
 *   **src/drivers/**: Core hardware interfaces:
     *   *screen.c / screen.h*: VGA text mode terminal driver with scrolling support, backspace support, and hardware cursor updating via I/O ports.
     *   *serial.c / serial.h*: UART COM1 serial interface operating at 38400 baud, used to stream debug output.
@@ -28,7 +27,7 @@ The project source files are organized into modular domains:
 
 ## Building and Compilation
 
-To compile DragonOS, you need an x86 cross-compiler or a Linux environment with 32-bit development libraries installed (e.g., Ubuntu/Debian under Windows Subsystem for Linux (WSL)).
+To compile DragonOS, you need a standard x86_64 GCC toolchain (native inside standard Linux environments, including Ubuntu/Debian under Windows Subsystem for Linux (WSL)).
 
 ### Prerequisites
 
@@ -43,7 +42,7 @@ sudo apt install build-essential nasm git xorriso qemu-system-x86
 
 The build system utilizes a Makefile to automate compiling source subdirectories:
 
-1.  **Compile and Link**: Builds the kernel binary and wraps it into a bootable ISO image:
+1.  **Compile and Link**: Builds the 64-bit kernel binary and wraps it into a bootable ISO image:
     ```bash
     make
     ```
@@ -78,7 +77,7 @@ You can launch the compiled ISO in QEMU. Choose the run command suited to your t
 Once DragonOS boots, you are presented with the `dragonos>` prompt. The following commands are supported:
 
 *   **help**: Lists all available commands.
-*   **about**: Displays detailed kernel metadata, layout, and architecture versions. (Bootloader: Limine)
+*   **about**: Displays detailed kernel metadata, layout, and architecture versions. (Bootloader: Limine, Mode: 64-bit Long Mode)
 *   **clear**: Clears the console screen and repositions the cursor.
 *   **ticks**: Prints the total number of hardware timer ticks elapsed since system boot.
 *   **ping**: Simple diagnostic command which prints "pong!".

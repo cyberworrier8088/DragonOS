@@ -1,89 +1,108 @@
-[bits 32]
-
-global gdt_flush
-gdt_flush:
-    mov eax, [esp+4]
-    lgdt [eax]
-    mov ax, 0x10    ; Kernel Data Segment selector is 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
-    jmp 0x08:.flush ; Kernel Code Segment selector is 0x08, performs far jump
-.flush:
-    ret
+[bits 64]
 
 global idt_flush
 idt_flush:
-    mov eax, [esp+4]
-    lidt [eax]
+    lidt [rdi]      ; In System V AMD64 ABI, first parameter is in RDI
     ret
 
 extern isr_handler
 isr_common_stub:
-    pusha           ; Pushes edi, esi, ebp, esp, ebx, edx, ecx, eax
-    mov ax, ds      ; Save original data segment descriptor
-    push eax
-    mov ax, 0x10    ; Load kernel data segment
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    push esp        ; Push stack pointer to pass registers_t* parameter
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rdi, rsp    ; Pass pointer to stack frame (registers_t*) in RDI
     call isr_handler
-    add esp, 4      ; Clean up the pushed argument
-    pop eax         ; Restore original data segment descriptor
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    popa            ; Pops registers pushed by pusha
-    add esp, 8      ; Cleans up pushed error code and pushed ISR number
-    iret            ; Pops CS, EIP, EFLAGS, SS, ESP
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    add rsp, 16     ; Clean up pushed error code and ISR vector
+    iretq           ; 64-bit interrupt return
 
 extern irq_handler
 irq_common_stub:
-    pusha           ; Pushes registers
-    mov ax, ds      ; Save original data segment descriptor
-    push eax
-    mov ax, 0x10    ; Load kernel data segment
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    push esp        ; Push stack pointer to pass registers_t* parameter
+    push rax
+    push rbx
+    push rcx
+    push rdx
+    push rsi
+    push rdi
+    push rbp
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rdi, rsp    ; Pass pointer to stack frame (registers_t*) in RDI
     call irq_handler
-    add esp, 4      ; Clean up the pushed argument
-    pop eax         ; Restore original data segment descriptor
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    popa            ; Pops registers
-    add esp, 8      ; Cleans up pushed error code and IRQ number
-    iret            ; Pops CS, EIP, EFLAGS, SS, ESP
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rbp
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
+    pop rbx
+    pop rax
+    add rsp, 16     ; Clean up pushed error code and IRQ vector
+    iretq           ; 64-bit interrupt return
 
 %macro ISR_NOERRCODE 1
   global isr%1
   isr%1:
-    push byte 0
-    push byte %1
+    push qword 0
+    push qword %1
     jmp isr_common_stub
 %endmacro
 
 %macro ISR_ERRCODE 1
   global isr%1
   isr%1:
-    push byte %1
+    push qword %1
     jmp isr_common_stub
 %endmacro
 
 %macro IRQ 2
   global irq%1
   irq%1:
-    push byte 0
-    push byte %2
+    push qword 0
+    push qword %2
     jmp irq_common_stub
 %endmacro
 

@@ -1,17 +1,16 @@
-# Makefile for DragonOS
+# Makefile for DragonOS (x86_64)
 
 CC = gcc
 AS = nasm
 LD = ld
 
-CFLAGS = -m32 -ffreestanding -O2 -Wall -Wextra -std=gnu99 -Isrc
-ASFLAGS = -f elf32
-LDFLAGS = -m elf_i386 -T src/linker.ld
+CFLAGS = -m64 -ffreestanding -O2 -Wall -Wextra -std=gnu99 -Isrc -mno-red-zone -mno-sse -mno-sse2
+ASFLAGS = -f elf64
+LDFLAGS = -m elf_x86_64 -T src/linker.ld
 
 OBJS = boot.o \
        src/cpu/interrupt.o \
        src/cpu/ports.o \
-       src/cpu/gdt.o \
        src/cpu/idt.o \
        src/drivers/serial.o \
        src/drivers/screen.o \
@@ -70,13 +69,13 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine
 	./limine-bin/limine bios-install $@
 
 run: dragonos.iso
-	qemu-system-i386 -cdrom dragonos.iso
+	qemu-system-x86_64 -cdrom dragonos.iso
 
 run-curses: dragonos.iso
-	qemu-system-i386 -cdrom dragonos.iso -display curses
+	qemu-system-x86_64 -cdrom dragonos.iso -display curses
 
 run-nographic: dragonos.iso
-	qemu-system-i386 -cdrom dragonos.iso -nographic -serial mon:stdio
+	qemu-system-x86_64 -cdrom dragonos.iso -nographic -serial mon:stdio
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir
