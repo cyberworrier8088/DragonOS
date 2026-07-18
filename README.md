@@ -1,55 +1,88 @@
-# DragonOS: The Next-Generation Desktop Operating System
+# DragonOS
 
+DragonOS is a monolithic, 32-bit x86 operating system kernel designed to run on IBM PC-compatible hardware. It is built as a freestanding application conforming to the Multiboot 1 specification, booting via the GRUB bootloader.
+
+The operating system initializes descriptor tables (GDT and IDT), configures hardware interrupt vectors via remapping the PIC, installs device drivers for standard console components, and runs an interactive command-line shell.
+
+## Architecture and Source Layout
+
+The project source files are organized into modular domains:
+
+*   **src/boot.asm**: Assembly bootstrap code containing the Multiboot header, stack space reservation (16 KiB), segment initialization, and the jump to `kernel_main`.
+*   **src/linker.ld**: Linker script specifying physical memory section layout. It positions the bootloader header and kernel code starting at the 1 MiB boundary.
+*   **src/kernel.c**: Main C execution entry point, orchestrating hardware setup and the interactive shell loop.
+*   **src/cpu/**: Core CPU instruction abstractions and hardware descriptor tables:
+    *   *ports.c / ports.h*: Low-level port input/output assembly wrappers (`inb`, `outb`, `inw`, `outw`).
+    *   *gdt.c / gdt.h*: Global Descriptor Table configuration defining null, kernel code, kernel data, user code, and user data segments.
+    *   *idt.c / idt.h*: Interrupt Descriptor Table and Interrupt Service Routine (ISR) callbacks.
+    *   *interrupt.asm*: Low-level assembly wrappers saving registers, re-routing hardware interrupt interrupts (IRQs 0-15), and performing the `iret` sequence.
+*   **src/drivers/**: Core hardware interfaces:
+    *   *screen.c / screen.h*: VGA text mode terminal driver with scrolling support, backspace support, and hardware cursor updating via I/O ports.
+    *   *serial.c / serial.h*: UART COM1 serial interface operating at 38400 baud, used to stream debug output.
+    *   *timer.c / timer.h*: Programmable Interval Timer (PIT) driver calibrated to trigger IRQ0 at 100Hz.
+    *   *keyboard.c / keyboard.h*: Keyboard driver translating scan codes into ASCII characters, tracking standard Shift and Caps Lock layout states.
+*   **src/libc/**: Freestanding C runtime:
+    *   *string.c / string.h*: String helper functions (`strlen`, `strcmp`, `strncmp`, `reverse`, `int_to_ascii`, `memset`, `memcpy`, `append`, `backspace`).
+*   **src/shell/**: Interactive CLI:
+    *   *shell.c / shell.h*: Custom command processor executing commands entered by the keyboard or outputted via VGA and serial.
+
+## Building and Compilation
+
+To compile DragonOS, you need an x86 cross-compiler or a Linux environment with 32-bit development libraries installed (e.g., Ubuntu/Debian under Windows Subsystem for Linux (WSL)).
+
+### Prerequisites
+
+Install the required utilities:
+
+```bash
+sudo apt update
+sudo apt install build-essential nasm grub-pc-bin xorriso qemu-system-x86
 ```
-     ______                                 ____  _____ 
-    / __  /_________ _____ _____  ____     / __ \/ ___/ 
-   / / / / ___/ __  / __  / __  / __  /   / / / /\__ \  
-  / /_/ / /  / /_/ / /_/ / /_/ / /_/ /   / /_/ /___/ /  
- /_____/_/   \____/\__  /\____/\__  /    \____//____/   
-                  /____/      /____/                    
-```
 
-Welcome to the engineering specifications and architectural design repository of **DragonOS**—a modern, 64-bit desktop operating system. 
+### Build Commands
 
-DragonOS is designed to look, feel, and function with a level of familiarity that makes Windows power users feel immediately at home, while delivering a quantum leap forward in speed, stability, security, and design. By discarding forty years of legacy MS-DOS/Windows registry baggage and rebuilding the user space and kernel using modern paradigms, DragonOS redefines personal computing.
+The build system utilizes a Makefile to automate compiling source subdirectories:
 
----
+1.  **Compile and Link**: Builds the kernel binary and wraps it into a bootable ISO image:
+    ```bash
+    make
+    ```
+2.  **Verify Multiboot Header**: Validates the binary header format:
+    ```bash
+    make verify
+    ```
+3.  **Clean Workspace**: Removes compiled object files, kernel binaries, and ISO files:
+    ```bash
+    make clean
+    ```
 
-## 🌟 The Core Pillars of DragonOS
+## Running the OS
 
-| Pillar | Focus | Implementation |
-| :--- | :--- | :--- |
-| **🚀 Hypersonic Speed** | Low latency, high throughput, zero lag. | Async-first hybrid microkernel, zero-copy networking, and unified direct-to-NVMe page cache. |
-| **🔒 Immutable Security** | Secure by design, sandboxed by default. | App sandboxing, hardware-backed root of trust, and instant copy-on-write ransomware rollback. |
-| **🎨 Aether Design System** | GPU-accelerated, physical rendering. | 120Hz/240Hz fluid mechanics animations, glassmorphism, and seamless multi-monitor High-DPI scaling. |
-| **🔄 Wyvern Compatibility** | Play your games, run your software. | High-performance user-space NT API translation layer and integrated Wine/Proton support. |
-| **🤖 Native Intelligence** | Local-first, hardware-accelerated AI. | *Draco AI*—a built-in assistant running on local NPUs for automation, file tagging, and smart search. |
+You can launch the compiled ISO in QEMU. Choose the run command suited to your terminal setup:
 
----
+*   **Standard Interface (GUI)**:
+    ```bash
+    make run
+    ```
+*   **Terminal/Text Interface (Curses)**:
+    ```bash
+    make run-curses
+    ```
+*   **Headless Console Output (Redirected to Serial)**:
+    ```bash
+    make run-nographic
+    ```
 
-## 📂 Documentation Roadmap
+## Shell Commands
 
-The design specifications of DragonOS are split into dedicated, focused files detailing every aspect of the operating system:
+Once DragonOS boots, you are presented with the `dragonos>` prompt. The following commands are supported:
 
-1. **[Core & Architecture](file:///c:/Users/Muhammad_Nabhan_nk/Downloads/DragonOS/docs/architecture.md)**
-   - The Rust-based hybrid microkernel design, process scheduling, memory and power models, and the *Wyvern* Windows compatibility engine.
-2. **[Aether GUI & User Experience](file:///c:/Users/Muhammad_Nabhan_nk/Downloads/DragonOS/docs/gui_ux.md)**
-   - The physical rendering pipeline, customization system, smart taskbar, window snapping paradigms, and input engines.
-3. **[Power, Productivity, & Tools](file:///c:/Users/Muhammad_Nabhan_nk/Downloads/DragonOS/docs/productivity_ai.md)**
-   - Draco AI system control, *DragonFS* with instant indexing, and the native developer suite (`drg` package manager, containers, terminal).
-4. **[Windows 11 Comparison](file:///c:/Users/Muhammad_Nabhan_nk/Downloads/DragonOS/docs/windows_comparison.md)**
-   - Quantitative and qualitative comparisons of DragonOS against Windows 11 in speed, security, design, and stability.
-
----
-
-## 🛠️ Design Rationale: Why DragonOS?
-
-Windows has served the world for decades, but it carries immense legacy burdens: a fragile Registry system, bloated background processes, fragmented GUI frameworks, and telemetric privacy intrusion. 
-
-DragonOS solves these issues by:
-* **Abandoning the Registry**: Configuration in DragonOS is stored in clean, atomic, version-controlled hierarchical text formats (`.toml` / `.json`), removing system-wide corruption vectors.
-* **Isolating Drivers**: Device drivers run in isolated user-space processes (under our hybrid microkernel design). If a GPU driver crashes, the system restarts it in 50 milliseconds without causing a Blue Screen of Death (BSOD).
-* **Elevating AI as a First-Class Citizen**: AI is not a web-wrapper or a sidebar; it is integrated directly into the OS event loop, giving it secure, local automation capabilities.
-
----
-*DragonOS is a design and architectural prototype. All documentation is hosted in this repository.*
+*   **help**: Lists all available commands.
+*   **about**: Displays detailed kernel metadata, layout, and architecture versions.
+*   **clear**: Clears the console screen and repositions the cursor.
+*   **ticks**: Prints the total number of hardware timer ticks elapsed since system boot.
+*   **ping**: Simple diagnostic command which prints "pong!".
+*   **echo [text]**: Prints the text directly back to the terminal screen.
+*   **serial [text]**: Writes the text to the COM1 serial interface.
+*   **reboot**: Reboots the machine by writing to the keyboard controller command register (port 0x64).
+*   **halt**: Halts the CPU safely.
