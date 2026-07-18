@@ -149,13 +149,42 @@ void register_interrupt_handler(uint8_t n, isr_t handler) {
     interrupt_handlers[n] = handler;
 }
 
+static void print_hex(uint64_t val) {
+    char buf[20];
+    char* hex = "0123456789ABCDEF";
+    buf[19] = '\0';
+    int i = 18;
+    if (val == 0) {
+        buf[i--] = '0';
+    } else {
+        while (val > 0 && i >= 0) {
+            buf[i--] = hex[val % 16];
+            val /= 16;
+        }
+    }
+    print_serial("0x");
+    print_serial(&buf[i+1]);
+}
+
 void isr_handler(registers_t* r) {
-    print_serial("Exception received!\n");
+    uint64_t cr2;
+    __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+
+    print_serial("Exception received! Vector: ");
+    print_hex(r->int_no);
+    print_serial(" | Error Code: ");
+    print_hex(r->err_code);
+    print_serial(" | RIP: ");
+    print_hex(r->rip);
+    print_serial(" | CR2 (Fault Address): ");
+    print_hex(cr2);
+    print_serial("\n");
+
     if (interrupt_handlers[r->int_no] != 0) {
         isr_t handler = interrupt_handlers[r->int_no];
         handler(r);
     } else {
-        print_serial("Unhandled CPU Exception! Halted.\n");
+        print_serial("Unhandled CPU Exception! System Halted.\n");
         __asm__ volatile("cli; hlt");
     }
 }

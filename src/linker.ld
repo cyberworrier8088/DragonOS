@@ -2,32 +2,31 @@ ENTRY(_start)
 
 SECTIONS
 {
-	/* Load kernel at 1 MiB boundary */
-	. = 1M;
+    . = 0xffffffff80000000;
 
-	/* Place Multiboot header and Text section */
-	.text BLOCK(4K) : ALIGN(4K)
-	{
-		*(.multiboot)
-		*(.text)
-	}
+    .text : {
+        *(.text)
+    }
 
-	/* Read-only data. */
-	.rodata BLOCK(4K) : ALIGN(4K)
-	{
-		*(.rodata)
-	}
+    .limine_requests : {
+        KEEP(*(.limine_requests))
+    }
 
-	/* Read-write data (initialized) */
-	.data BLOCK(4K) : ALIGN(4K)
-	{
-		*(.data)
-	}
+    .rodata : {
+        *(.rodata)
+    }
 
-	/* Read-write data (uninitialized) and stack */
-	.bss BLOCK(4K) : ALIGN(4K)
-	{
-		*(COMMON)
-		*(.bss)
-	}
+    .data : {
+        *(.data)
+    }
+
+    .bss : {
+        *(COMMON)
+        *(.bss)
+    }
+
+    /DISCARD/ : {
+        *(.eh_frame)
+        *(.note .note.*)
+    }
 }

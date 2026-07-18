@@ -108,7 +108,7 @@ static void gui_execute_command(const char* cmd) {
     } else if (strcmp(cmd, "about") == 0) {
         gui_write_string("DragonOS x86_64 Kernel\n");
         gui_write_string("Build: July 2026\n");
-        gui_write_string("Bootloader: Limine VBE Graphics\n");
+        gui_write_string("Bootloader: Native Limine Graphical Mode\n");
         gui_write_string("Design: Monolithic 64-bit Aero GUI\n");
     } else if (strcmp(cmd, "clear") == 0) {
         memset(term_lines, 0, sizeof(term_lines));
@@ -302,7 +302,7 @@ void gui_draw(void) {
             draw_string(win->x + 10, win->y + 75, "CPU: 64-Bit Intel Core Emulator", 0x212529);
             draw_string(win->x + 10, win->y + 91, "RAM: 4096 MB Physical", 0x212529);
             draw_string(win->x + 10, win->y + 107, "Mode: 64-Bit Protected Long Mode", 0x212529);
-            draw_string(win->x + 10, win->y + 123, "Boot: Limine Multiboot v1.0", 0x212529);
+            draw_string(win->x + 10, win->y + 123, "Boot: Native Limine Bootloader", 0x212529);
         }
         else if (win->id == 1) {
             // Command Terminal
@@ -325,7 +325,7 @@ void gui_draw(void) {
             }
         }
         else if (win->id == 2) {
-            // Calculator (styled to match Windows 7 calculator)
+            // Calculator
             draw_rect(win->x + 1, win->y + 24, win->w - 2, win->h - 25, 0xF1F3F5); // Silver background
             
             // Display box
@@ -398,42 +398,50 @@ void gui_draw(void) {
     }
 
     // 4. Draw Start Menu (pop-up over desktop/windows if open)
+    int smy = (int)screen_height - 400;
     if (start_menu_open) {
-        draw_rect_translucent(6, 196, 288, 368, 0x1971C2, 60);
+        draw_rect_translucent(6, smy - 4, 288, 368, 0x1971C2, 60);
 
         // Glass blue frame
-        draw_rect_translucent(10, 200, 280, 360, 0x1A365D, 220);
-        draw_rect_outline(10, 200, 280, 360, 0x1971C2);
+        draw_rect_translucent(10, smy, 280, 360, 0x1A365D, 220);
+        draw_rect_outline(10, smy, 280, 360, 0x1971C2);
 
         // Left Pane (White Apps Panel)
-        draw_rect(16, 206, 150, 348, 0xFFFFFF);
+        draw_rect(16, smy + 6, 150, 348, 0xFFFFFF);
 
         // Apps list
-        draw_string(24, 220, "Computer Info", 0x212529);
-        draw_string(24, 250, "Command Term", 0x212529);
-        draw_string(24, 280, "Calculator", 0x212529);
-        draw_string(24, 310, "System Monitor", 0x212529);
+        draw_string(24, smy + 20, "Computer Info", 0x212529);
+        draw_string(24, smy + 50, "Command Term", 0x212529);
+        draw_string(24, smy + 80, "Calculator", 0x212529);
+        draw_string(24, smy + 110, "System Monitor", 0x212529);
 
         // Search Programs box at the bottom left
-        draw_rect(20, 522, 142, 22, 0xFAFAFA);
-        draw_rect_outline(20, 522, 142, 22, 0xCED4DA);
-        draw_string(26, 526, "Search programs", 0x868E96);
+        draw_rect(20, smy + 322, 142, 22, 0xFAFAFA);
+        draw_rect_outline(20, smy + 322, 142, 22, 0xCED4DA);
+        draw_string(26, smy + 326, "Search programs", 0x868E96);
 
         // Right Pane (shortcuts list)
-        draw_string(176, 220, "Documents", 0xFFFFFF);
-        draw_string(176, 250, "Pictures", 0xFFFFFF);
-        draw_string(176, 280, "Games", 0xFFFFFF);
-        draw_string(176, 310, "Control Panel", 0xFFFFFF);
+        draw_string(176, smy + 20, "Documents", 0xFFFFFF);
+        draw_string(176, smy + 50, "Pictures", 0xFFFFFF);
+        draw_string(176, smy + 80, "Games", 0xFFFFFF);
+        draw_string(176, smy + 110, "Control Panel", 0xFFFFFF);
 
         // User profile smiley avatar box
         int pic_x = 230;
-        int pic_y = 210;
+        int pic_y = smy + 10;
         int pic_w = 40;
         int pic_h = 40;
         draw_rect(pic_x, pic_y, pic_w, pic_h, 0x74C0FC);
         draw_rect_outline(pic_x, pic_y, pic_w, pic_h, 0xFFFFFF);
         draw_rect_outline(pic_x - 1, pic_y - 1, pic_w + 2, pic_h + 2, 0xADB5BD);
         // Smiley Face profile picture
+        draw_circle(pic_x + 20, pic_y + 20, 10, 0xFFD43B);
+        draw_pixel(pic_x + 17, pic_y + 17, 0x000000);
+        draw_pixel(pic_x + 23, pic_y + 17, 0x000000);
+        draw_pixel(pic_x + 16, pic_y + 23, 0x000000);
+        draw_pixel(pic_x + 17, pic_y + 24, 0x000000);
+        draw_pixel(pic_x + 18, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 19, pic_y + 25, 0x000000);
         draw_circle(pic_x + 20, pic_y + 20, 10, 0xFFD43B);
         draw_pixel(pic_x + 17, pic_y + 17, 0x000000);
         draw_pixel(pic_x + 23, pic_y + 17, 0x000000);
@@ -448,19 +456,20 @@ void gui_draw(void) {
         draw_pixel(pic_x + 24, pic_y + 23, 0x000000);
 
         // Shutdown Button at the bottom right
-        draw_rect(180, 520, 100, 28, 0xFA5252);
-        draw_rect_outline(180, 520, 100, 28, 0xFFFFFF);
-        draw_string(195, 526, "Shutdown", 0xFFFFFF);
+        draw_rect(180, smy + 320, 100, 28, 0xFA5252);
+        draw_rect_outline(180, smy + 320, 100, 28, 0xFFFFFF);
+        draw_string(195, smy + 326, "Shutdown", 0xFFFFFF);
     }
 
     // 5. Draw Taskbar (translucent glassmorphism bottom row)
-    draw_rect_translucent(0, 560, 800, 40, 0x1A365D, 180);
-    draw_rect(0, 560, 800, 1, 0x4DABF7); // Top light highlight line
+    int tby = (int)screen_height - 40;
+    draw_rect_translucent(0, tby, screen_width, 40, 0x1A365D, 180);
+    draw_rect(0, tby, screen_width, 1, 0x4DABF7); // Top light highlight line
 
     // Start Orb Button (circular blue glass orb)
-    draw_circle(24, 580, 16, 0x1971C2);
-    draw_circle(24, 580, 14, 0x228BE6);
-    draw_start_logo(24, 580);
+    draw_circle(24, tby + 20, 16, 0x1971C2);
+    draw_circle(24, tby + 20, 14, 0x228BE6);
+    draw_start_logo(24, tby + 20);
 
     // Draw taskbar glassy buttons for open applications
     char* app_names[4] = {"Comp", "Term", "Calc", "Mon"};
@@ -470,7 +479,7 @@ void gui_draw(void) {
         if (w->closed) continue;
 
         int bx = 55 + i * 70;
-        int by = 565;
+        int by = tby + 5;
         int bw = 64;
         int bh = 30;
 
@@ -517,19 +526,19 @@ void gui_draw(void) {
         time_str[11] = '\0';
     }
 
-    draw_string(725, 572, time_str, 0xFFFFFF);
+    draw_string(screen_width - 75, tby + 12, time_str, 0xFFFFFF);
 
     // Network Signal strength indicator bars
-    int net_x = 695;
-    int net_y = 588;
+    int net_x = screen_width - 105;
+    int net_y = tby + 28;
     for (int bar = 0; bar < 5; bar++) {
         int bar_h = 3 + bar * 3;
         draw_rect(net_x + bar * 4, net_y - bar_h, 3, bar_h, 0x00FF00);
     }
 
     // Volume speaker tray icon
-    int vol_x = 675;
-    int vol_y = 576;
+    int vol_x = screen_width - 125;
+    int vol_y = tby + 16;
     draw_rect(vol_x, vol_y + 3, 3, 4, 0xFFFFFF);
     draw_pixel(vol_x + 3, vol_y + 3, 0xFFFFFF);
     draw_pixel(vol_x + 4, vol_y + 2, 0xFFFFFF);
@@ -545,8 +554,8 @@ void gui_draw(void) {
     draw_pixel(vol_x + 5, vol_y + 8, 0xFFFFFF);
 
     // Show Desktop glassy sliver on the very right
-    draw_rect_translucent(790, 560, 10, 40, 0xADB5BD, 100);
-    draw_rect(790, 560, 1, 40, 0xCED4DA);
+    draw_rect_translucent(screen_width - 10, tby, 10, 40, 0xADB5BD, 100);
+    draw_rect(screen_width - 10, tby, 1, 40, 0xCED4DA);
 
     // Update System Monitor graphs
     val_timer++;
@@ -592,9 +601,9 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                 win->x = mx - win->drag_off_x;
                 win->y = my - win->drag_off_y;
                 if (win->y < 0) win->y = 0;
-                if (win->y > 520) win->y = 520;
+                if (win->y > (int)screen_height - 80) win->y = (int)screen_height - 80;
                 if (win->x < -win->w + 40) win->x = -win->w + 40;
-                if (win->x > 760) win->x = 760;
+                if (win->x > (int)screen_width - 40) win->x = (int)screen_width - 40;
                 return;
             } else {
                 win->dragging = 0;
@@ -606,7 +615,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         was_clicked = 1;
 
         // Check Show Desktop sliver click
-        if (mx >= 790 && mx < 800 && my >= 560 && my < 600) {
+        if (mx >= (int)screen_width - 10 && mx < (int)screen_width && my >= (int)screen_height - 40 && my < (int)screen_height) {
             for (int w = 0; w < MAX_WINDOWS; w++) {
                 windows[w].minimized = 1;
             }
@@ -616,12 +625,13 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         // Check taskbar buttons click
+        int tby = (int)screen_height - 40;
         for (int i = 0; i < MAX_WINDOWS; i++) {
             gui_window_t* w = &windows[i];
             if (w->closed) continue;
 
             int bx = 55 + i * 70;
-            int by = 565;
+            int by = tby + 5;
             int bw = 64;
             int bh = 30;
             if (mx >= bx && mx < bx + bw && my >= by && my < by + bh) {
@@ -640,37 +650,38 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         // Check Start Menu items if open
+        int smy = (int)screen_height - 400;
         if (start_menu_open) {
             // Clicked Shutdown button
-            if (mx >= 180 && mx < 280 && my >= 520 && my < 548) {
+            if (mx >= 180 && mx < 280 && my >= smy + 320 && my < smy + 348) {
                 gui_write_string("Shutting down...\n");
                 outw(0x604, 0x2000); // Standard QEMU shutdown port
                 __asm__ volatile("cli; hlt");
             }
             // Clicked App shortcuts inside start menu
             if (mx >= 16 && mx < 166) {
-                if (my >= 210 && my < 240) {
+                if (my >= smy + 10 && my < smy + 40) {
                     windows[0].closed = 0;
                     windows[0].minimized = 0;
                     active_win_id = 0;
                     start_menu_open = 0;
                     return;
                 }
-                if (my >= 240 && my < 270) {
+                if (my >= smy + 40 && my < smy + 70) {
                     windows[1].closed = 0;
                     windows[1].minimized = 0;
                     active_win_id = 1;
                     start_menu_open = 0;
                     return;
                 }
-                if (my >= 270 && my < 300) {
+                if (my >= smy + 70 && my < smy + 100) {
                     windows[2].closed = 0;
                     windows[2].minimized = 0;
                     active_win_id = 2;
                     start_menu_open = 0;
                     return;
                 }
-                if (my >= 300 && my < 330) {
+                if (my >= smy + 100 && my < smy + 130) {
                     windows[3].closed = 0;
                     windows[3].minimized = 0;
                     active_win_id = 3;
@@ -680,13 +691,13 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             }
 
             // Click outside start menu closes it
-            if (mx > 290 || my < 200 || my > 560) {
+            if (mx > 290 || my < smy || my > tby) {
                 start_menu_open = 0;
             }
         }
 
         // Check Taskbar Start Orb
-        if (mx >= 8 && mx < 40 && my >= 564 && my < 596) {
+        if (mx >= 8 && mx < 40 && my >= tby + 4 && my < tby + 36) {
             start_menu_open = !start_menu_open;
             return;
         }

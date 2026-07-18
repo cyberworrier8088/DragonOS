@@ -5,69 +5,47 @@
 #include "drivers/mouse.h"
 #include "drivers/graphics.h"
 #include "shell/gui.h"
+#include "../limine-bin/limine.h"
 
-/* Multiboot 1 Information structure definition */
-struct multiboot_info {
-    uint32_t flags;
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t boot_device;
-    uint32_t cmdline;
-    uint32_t mods_count;
-    uint32_t mods_addr;
-    uint32_t syms[4];
-    uint32_t mmap_length;
-    uint32_t mmap_addr;
-    uint32_t drives_length;
-    uint32_t drives_addr;
-    uint32_t config_table;
-    uint32_t boot_loader_name;
-    uint32_t apm_table;
-    uint32_t vbe_control_info;
-    uint32_t vbe_mode_info;
-    uint16_t vbe_mode;
-    uint16_t vbe_interface_seg;
-    uint16_t vbe_interface_off;
-    uint16_t vbe_interface_len;
-    // Multiboot 1 Framebuffer info starts here
-    uint64_t framebuffer_addr;
-    uint32_t framebuffer_pitch;
-    uint32_t framebuffer_width;
-    uint32_t framebuffer_height;
-    uint8_t  framebuffer_bpp;
-    uint8_t  framebuffer_type;
-} __attribute__((packed));
+// Set the base revision to 4
+__attribute__((used, section(".limine_requests")))
+static volatile LIMINE_BASE_REVISION(4);
 
-void kernel_main(uint32_t magic, uint64_t info_addr) {
+// Request a graphical framebuffer
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_framebuffer_request framebuffer_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
+
+void kernel_main(void) {
     /* Initialize serial port for debug logs */
     init_serial();
-    print_serial("[DragonOS] Booting 64-bit kernel...\n");
+    print_serial("[DragonOS] Booting 64-bit kernel under Limine Boot Protocol...\n");
 
     /* Initialize CPU IDT */
     idt_init();
     print_serial("[DragonOS] 64-bit IDT loaded.\n");
 
-    /* Default VBE settings */
-    uint64_t fb_addr = 0xFD000000; // Fallback for standard QEMU stdvga
+    /* Framebuffer variables */
+    uint64_t fb_addr = 0;
     uint32_t fb_width = 800;
     uint32_t fb_height = 600;
     uint32_t fb_pitch = 800 * 4;
 
-    /* Parse Multiboot Information pointer if magic matches */
-    if (magic == 0x2BADB002 && info_addr != 0) {
-        struct multiboot_info* info = (struct multiboot_info*)info_addr;
-        // Check if Bit 12 (framebuffer info) is present in flags
-        if (info->flags & (1 << 12)) {
-            fb_addr = info->framebuffer_addr;
-            fb_width = info->framebuffer_width;
-            fb_height = info->framebuffer_height;
-            fb_pitch = info->framebuffer_pitch;
-            print_serial("[DragonOS] Framebuffer details acquired from bootloader.\n");
-        } else {
-            print_serial("[DragonOS] Warning: Bootloader did not set graphics bit 12. Using standard fallback.\n");
-        }
+    /* Verify if the bootloader provided a valid linear framebuffer */
+    if (framebuffer_request.response != NULL && framebuffer_request.response->framebuffer_count >= 1) {
+        struct limine_framebuffer* fb = framebuffer_request.response->framebuffers[0];
+        fb_addr = (uint64_t)fb->address;
+        fb_width = fb->width;
+        fb_height = fb->height;
+        fb_pitch = fb->pitch;
+        print_serial("[DragonOS] Framebuffer details acquired from Limine protocol.\n");
     } else {
-        print_serial("[DragonOS] Warning: Invalid Multiboot magic. Using default VBE mapping.\n");
+        print_serial("[DragonOS] Error: Limine did not provide a linear framebuffer! System halted.\n");
+        for (;;) {
+            __asm__ volatile("cli; hlt");
+        }
     }
 
     /* Initialize linear graphics framebuffer */
@@ -95,7 +73,7 @@ void kernel_main(uint32_t magic, uint64_t info_addr) {
     /* Desktop Rendering loop */
     while (1) {
         gui_draw();
-        // Small delay to pace drawing loop
+        // Pace drawing loop
         for (volatile int d = 0; d < 20000; d++) {}
     }
 }

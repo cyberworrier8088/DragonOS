@@ -53,7 +53,7 @@ dragonos.bin: $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 verify: dragonos.bin
-	grub-file --is-x86-multiboot dragonos.bin
+	readelf -h dragonos.bin
 
 limine-bin/limine:
 	git clone https://github.com/limine-bootloader/limine.git --branch=v8.7.0-binary --depth=1 limine-bin

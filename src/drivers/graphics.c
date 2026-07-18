@@ -2,20 +2,26 @@
 #include "../libc/font.h"
 #include "../libc/string.h"
 
+#define MAX_WIDTH 1280
+#define MAX_HEIGHT 1024
+
 uint32_t* framebuffer = 0;
 uint32_t  screen_width = 800;
 uint32_t  screen_height = 600;
 uint32_t  screen_pitch = 800 * 4;
 
-/* 800x600 Double buffer memory allocation */
-static uint32_t back_buffer_storage[800 * 600];
+/* Dynamic resolution-supporting double buffer allocation */
+static uint32_t back_buffer_storage[MAX_WIDTH * MAX_HEIGHT];
 uint32_t* back_buffer = back_buffer_storage;
 
 void graphics_init(uint64_t phys_addr, uint32_t width, uint32_t height, uint32_t pitch) {
     framebuffer = (uint32_t*)phys_addr;
-    screen_width = width;
-    screen_height = height;
+    
+    // Clip resolution to prevent buffer overflow on high-res displays
+    screen_width = (width > MAX_WIDTH) ? MAX_WIDTH : width;
+    screen_height = (height > MAX_HEIGHT) ? MAX_HEIGHT : height;
     screen_pitch = pitch;
+    
     memset(back_buffer, 0, screen_width * screen_height * 4);
 }
 
