@@ -111,7 +111,8 @@ static void keyboard_callback(registers_t* regs) {
         }
 
         if (ascii != 0) {
-            shell_input_char(ascii);
+            extern void gui_handle_keyboard(char c);
+            gui_handle_keyboard(ascii);
         }
     }
 }

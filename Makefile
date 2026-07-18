@@ -14,10 +14,13 @@ OBJS = boot.o \
        src/cpu/idt.o \
        src/drivers/serial.o \
        src/drivers/screen.o \
+       src/drivers/graphics.o \
+       src/drivers/mouse.o \
        src/drivers/timer.o \
        src/drivers/keyboard.o \
        src/libc/string.o \
        src/shell/shell.o \
+       src/shell/gui.o \
        kernel.o
 
 .PHONY: all clean verify run run-curses run-nographic

@@ -86,3 +86,20 @@ void* memcpy(void* dest, const void* src, size_t len) {
     }
     return dest;
 }
+
+char* strcpy(char* dest, const char* src) {
+    char* d = dest;
+    while ((*d++ = *src++))
+        ;
+    return dest;
+}
+
+char* strcat(char* dest, const char* src) {
+    char* d = dest;
+    while (*d) {
+        d++;
+    }
+    while ((*d++ = *src++))
+        ;
+    return dest;
+}

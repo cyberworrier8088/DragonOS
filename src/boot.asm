@@ -1,9 +1,10 @@
 ; boot.asm
-; Multiboot 1 header and 64-bit long mode switch
+; Multiboot 1 header and 64-bit long mode switch with 4 GiB mapping & VBE graphics
 
 MBALIGN  equ  1 << 0            ; align loaded modules on page boundaries
 MEMINFO  equ  1 << 1            ; provide memory map
-FLAGS    equ  MBALIGN | MEMINFO ; this is the Multiboot 'flag' field
+GRAPHICS equ  1 << 2            ; request graphics mode
+FLAGS    equ  MBALIGN | MEMINFO | GRAPHICS
 MAGIC    equ  0x1BADB002        ; 'magic number'
 CHECKSUM equ -(MAGIC + FLAGS)   ; checksum
 
@@ -12,6 +13,10 @@ align 4
     dd MAGIC
     dd FLAGS
     dd CHECKSUM
+    dd 0    ; mode_type: 0 = linear graphics
+    dd 800  ; width: 800 pixels
+    dd 600  ; height: 600 pixels
+    dd 32   ; depth: 32 bits per pixel
 
 section .bss
 align 4096
@@ -19,8 +24,8 @@ pml4:
     resb 4096
 pdpt:
     resb 4096
-pd:
-    resb 4096
+pd_tables:
+    resb 4096 * 4  ; Allocate space for 4 page directories (covers 4 GiB)
 
 align 16
 stack_bottom:
@@ -34,20 +39,44 @@ _start:
     ; Disable interrupts
     cli
 
-    ; 1. Set up page tables for 2 MiB identity map
+    ; Immediately preserve Multiboot magic and info pointer in registers
+    ; EDI and ESI are not modified during the long mode transition.
+    ; This sets up RDI and RSI automatically for the System V ABI!
+    mov edi, eax        ; EDI = magic
+    mov esi, ebx        ; ESI = info pointer
+
+    ; 1. Set up page tables for 4 GiB identity map
     ; PML4[0] -> PDPT
     mov eax, pdpt
     or eax, 0x3     ; Present + Read/Write
     mov [pml4], eax
 
-    ; PDPT[0] -> PD
-    mov eax, pd
+    ; PDPT[0], [1], [2], [3] point to the 4 page directories in pd_tables
+    mov eax, pd_tables
     or eax, 0x3     ; Present + Read/Write
     mov [pdpt], eax
 
-    ; PD[0] -> Huge Page (2 MiB) at physical address 0
-    mov eax, 0x83   ; Present + Read/Write + Huge Page (bit 7)
-    mov [pd], eax
+    mov eax, pd_tables + 4096
+    or eax, 0x3
+    mov [pdpt + 8], eax
+
+    mov eax, pd_tables + 8192
+    or eax, 0x3
+    mov [pdpt + 16], eax
+
+    mov eax, pd_tables + 12288
+    or eax, 0x3
+    mov [pdpt + 24], eax
+
+    ; Populate all 2048 entries (4 directories * 512 entries) in pd_tables
+    mov ecx, 0      ; entry index from 0 to 2047
+    mov edx, 0x83   ; first entry value (base address 0 | Huge Page | Present | R/W)
+.loop_pd:
+    mov [pd_tables + ecx*8], edx
+    add edx, 0x200000   ; increment physical address by 2 MiB
+    inc ecx
+    cmp ecx, 2048
+    jne .loop_pd
 
     ; 2. Load PML4 into CR3
     mov eax, pml4
@@ -89,6 +118,7 @@ long_mode_start:
     mov rsp, stack_top
 
     ; Call the C kernel main function
+    ; RDI (magic) and RSI (info pointer) are already set up from _start!
     extern kernel_main
     call kernel_main
 
