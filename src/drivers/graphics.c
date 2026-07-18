@@ -126,10 +126,45 @@ void draw_circle(int32_t x0, int32_t y0, int32_t radius, uint32_t color) {
 void draw_desktop_gradient(void) {
     for (uint32_t y = 0; y < screen_height; y++) {
         for (uint32_t x = 0; x < screen_width; x++) {
+            // 1. Base blue gradient
             uint32_t factor_num = (x * 255 / screen_width + y * 255 / screen_height) / 2;
             uint8_t r = 10 + (factor_num * 30 / 255);
             uint8_t g = 90 - (factor_num * 60 / 255);
             uint8_t b = 180 - (factor_num * 100 / 255);
+            
+            // 2. Add Windows 7 curved light streams (Aero streams)
+            int dx1 = (int)x - 200;
+            int dy1 = (int)y - 700;
+            int dist1 = dx1 * dx1 + dy1 * dy1;
+            
+            int dx2 = (int)x - 600;
+            int dy2 = (int)y + 200;
+            int dist2 = dx2 * dx2 + dy2 * dy2;
+            
+            int glow = 0;
+            
+            // Check proximity to radius 450
+            int diff1 = dist1 - 450 * 450;
+            if (diff1 < 0) diff1 = -diff1;
+            if (diff1 < 30000) {
+                glow += (30000 - diff1) / 500;
+            }
+            
+            // Check proximity to radius 720
+            int diff2 = dist2 - 720 * 720;
+            if (diff2 < 0) diff2 = -diff2;
+            if (diff2 < 40000) {
+                glow += (40000 - diff2) / 600;
+            }
+            
+            // Blend glow
+            if (glow > 0) {
+                if (glow > 80) glow = 80;
+                g = (g * (255 - glow) + 180 * glow) / 255;
+                b = (b * (255 - glow) + 240 * glow) / 255;
+                r = (r * (255 - glow) + 120 * glow) / 255;
+            }
+            
             back_buffer[y * screen_width + x] = (r << 16) | (g << 8) | b;
         }
     }

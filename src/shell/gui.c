@@ -37,6 +37,30 @@ static int calc_new_number = 1;
 static int sysmon_values[60];
 static int val_timer = 0;
 
+/* High-Fidelity 12x20 Windows 7 Mouse Pointer Bitmap */
+static const char mouse_cursor_bitmap[20][12] = {
+    "X           ",
+    "XX          ",
+    "X.X         ",
+    "X..X        ",
+    "X...X       ",
+    "X....X      ",
+    "X.....X     ",
+    "X......X    ",
+    "X.......X   ",
+    "X........X  ",
+    "X.........X ",
+    "X....XXXXXX ",
+    "X..X.X      ",
+    "X.X  X.X    ",
+    "XX    X.X   ",
+    "X      X.X  ",
+    "        XX  ",
+    "            ",
+    "            ",
+    "            "
+};
+
 /* Custom print helper for Terminal GUI Window */
 void gui_write_char(char c) {
     if (c == '\n') {
@@ -71,7 +95,6 @@ void gui_write_string(const char* str) {
 
 /* Execute shell command in the GUI context */
 static void gui_execute_command(const char* cmd) {
-    // Redirect shell outputs to GUI terminal lines
     if (strcmp(cmd, "help") == 0) {
         gui_write_string("Available commands:\n");
         gui_write_string("  help        - Show this help menu\n");
@@ -180,16 +203,15 @@ void init_gui(void) {
 
 /* Helper to render Start Orb Flag Logo */
 static void draw_start_logo(int cx, int cy) {
-    // Draw 4 quadrants of the Windows flag
-    draw_rect(cx - 6, cy - 6, 5, 5, 0xFF4B4B); // Red
-    draw_rect(cx + 1, cy - 6, 5, 5, 0x4BFF4B); // Green
-    draw_rect(cx - 6, cy + 1, 5, 5, 0x4B4BFF); // Blue
-    draw_rect(cx + 1, cy + 1, 5, 5, 0xFFFF4B); // Yellow
+    draw_rect(cx - 5, cy - 5, 4, 4, 0xFF4B4B); // Red
+    draw_rect(cx + 1, cy - 5, 4, 4, 0x4BFF4B); // Green
+    draw_rect(cx - 5, cy + 1, 4, 4, 0x4B4BFF); // Blue
+    draw_rect(cx + 1, cy + 1, 4, 4, 0xFFFF4B); // Yellow
 }
 
 /* Redraw GUI state on the back buffer */
 void gui_draw(void) {
-    // 1. Draw Windows 7 gradient background
+    // 1. Draw Windows 7 gradient background with Aero light streams
     draw_desktop_gradient();
 
     // 2. Draw Desktop Icons
@@ -220,9 +242,7 @@ void gui_draw(void) {
 
     // 3. Draw Windows from bottom to top (focused window drawn last)
     for (int priority = 0; priority < MAX_WINDOWS; priority++) {
-        // Draw the window that is not active first, active window last
         int i = priority;
-        // Simple sorting layout: draw active window last
         if (active_win_id >= 0 && active_win_id < MAX_WINDOWS) {
             if (priority == MAX_WINDOWS - 1) {
                 i = active_win_id;
@@ -235,26 +255,46 @@ void gui_draw(void) {
         gui_window_t* win = &windows[i];
         if (win->closed || win->minimized) continue;
 
-        // Draw Aero window border/frame
-        // Outer glow/glass shadow:
-        draw_rect_translucent(win->x - 4, win->y - 4, win->w + 8, win->h + 8, 0x30A5FF, 60);
+        // Draw Aero window translucent shadow border
+        draw_rect_translucent(win->x - 4, win->y - 4, win->w + 8, win->h + 8, 0x228BE6, 40);
 
-        // Title bar (translucent glass blue/cyan)
-        uint32_t title_color = (active_win_id == win->id) ? 0x228BE6 : 0x74C0FC;
-        draw_rect_translucent(win->x, win->y, win->w, 24, title_color, 200);
+        // Title bar with rounded top corners
+        uint32_t title_color = (active_win_id == win->id) ? 0x1C7ED6 : 0x74C0FC;
+        draw_rect_translucent(win->x + 2, win->y, win->w - 4, 1, title_color, 200);
+        draw_rect_translucent(win->x + 1, win->y + 1, win->w - 2, 1, title_color, 200);
+        draw_rect_translucent(win->x, win->y + 2, win->w, 22, title_color, 200);
         draw_rect_outline(win->x, win->y, win->w, win->h, 0x1971C2);
 
-        // Window Title
+        // Specular gloss reflection line
+        draw_rect_translucent(win->x + 1, win->y + 2, win->w - 2, 8, 0xFFFFFF, 50);
+
+        // Window Title text
         draw_string(win->x + 8, win->y + 5, win->title, 0xFFFFFF);
 
-        // Close Button (Red Box)
-        draw_rect(win->x + win->w - 20, win->y + 4, 16, 16, 0xFA5252);
-        draw_char(win->x + win->w - 16, win->y + 4, 'X', 0xFFFFFF);
+        // Buttons: Minimize, Maximize, Close
+        int bx_close = win->x + win->w - 18;
+        int bx_max   = win->x + win->w - 34;
+        int bx_min   = win->x + win->w - 50;
+
+        // Minimize
+        draw_rect(bx_min, win->y + 4, 12, 12, 0x4DABF7);
+        draw_rect_outline(bx_min, win->y + 4, 12, 12, 0x1971C2);
+        draw_rect(bx_min + 3, win->y + 10, 6, 2, 0xFFFFFF);
+
+        // Maximize
+        draw_rect(bx_max, win->y + 4, 12, 12, 0x4DABF7);
+        draw_rect_outline(bx_max, win->y + 4, 12, 12, 0x1971C2);
+        draw_rect_outline(bx_max + 3, win->y + 7, 6, 6, 0xFFFFFF);
+
+        // Close (Red Box)
+        draw_rect(bx_close, win->y + 4, 12, 12, 0xFA5252);
+        draw_rect_outline(bx_close, win->y + 4, 12, 12, 0xC92A2A);
+        draw_char(bx_close + 3, win->y + 2, 'x', 0xFFFFFF);
 
         // Window content background
         draw_rect(win->x + 1, win->y + 24, win->w - 2, win->h - 25, 0xFFFFFF);
 
-        // Draw specific window components
+        // Draw specific window contents
         if (win->id == 0) {
             // Computer Info
             draw_string(win->x + 10, win->y + 35, "DragonOS x86_64 Kernel", 0x1971C2);
@@ -266,7 +306,7 @@ void gui_draw(void) {
         }
         else if (win->id == 1) {
             // Command Terminal
-            draw_rect(win->x + 4, win->y + 28, win->w - 8, win->h - 32, 0x111111); // Black terminal box
+            draw_rect(win->x + 4, win->y + 28, win->w - 8, win->h - 32, 0x111111);
             for (int line = 0; line <= term_line_count; line++) {
                 draw_string(win->x + 8, win->y + 32 + line * 14, term_lines[line], 0x00FF00);
             }
@@ -274,20 +314,25 @@ void gui_draw(void) {
             char prompt_line[160];
             strcpy(prompt_line, "dragonos> ");
             strcat(prompt_line, command_buffer);
-            // Append static flashing block cursor
-            if ((ticks_counter / 50) % 2 == 0) {
-                strcat(prompt_line, "_");
-            }
             draw_string(win->x + 8, win->y + 32 + term_line_count * 14, prompt_line, 0xFFFFFF);
+
+            // Draw flashing console underline cursor
+            if ((ticks_counter / 25) % 2 == 0) {
+                int text_len = strlen(prompt_line);
+                int cursor_x = win->x + 8 + text_len * 8;
+                int cursor_y = win->y + 32 + term_line_count * 14;
+                draw_rect(cursor_x, cursor_y + 12, 8, 2, 0xFFFFFF);
+            }
         }
         else if (win->id == 2) {
-            // Calculator
+            // Calculator (styled to match Windows 7 calculator)
+            draw_rect(win->x + 1, win->y + 24, win->w - 2, win->h - 25, 0xF1F3F5); // Silver background
+            
             // Display box
-            draw_rect(win->x + 10, win->y + 30, win->w - 20, 20, 0xF1F3F5);
-            draw_rect_outline(win->x + 10, win->y + 30, win->w - 20, 20, 0xCED4DA);
-            draw_string(win->x + 15, win->y + 33, calc_buf, 0x212529);
+            draw_rect(win->x + 10, win->y + 30, win->w - 20, 22, 0xFFFFFF);
+            draw_rect_outline(win->x + 10, win->y + 30, win->w - 20, 22, 0xADB5BD);
+            draw_string(win->x + 15, win->y + 34, calc_buf, 0x212529);
 
-            // Button layout
             char* layout[4][4] = {
                 {"7", "8", "9", "/"},
                 {"4", "5", "6", "*"},
@@ -301,16 +346,15 @@ void gui_draw(void) {
                 for (int c = 0; c < 4; c++) {
                     int bx = start_bx + c * 40;
                     int by = start_by + r * 35;
-                    draw_rect(bx, by, 34, 28, 0xE9ECEF);
-                    draw_rect_outline(bx, by, 34, 28, 0xADB5BD);
-                    draw_char(bx + 13, by + 6, layout[r][c][0], 0x212529);
+                    draw_rect(bx, by, 34, 28, 0xFFFFFF);
+                    draw_rect_outline(bx, by, 34, 28, 0xCED4DA);
+                    draw_char(bx + 13, by + 6, layout[r][c][0], 0x1C7ED6); // Aero blue text
                 }
             }
         }
         else if (win->id == 3) {
             // System Monitor
             draw_string(win->x + 10, win->y + 30, "CPU Usage History", 0x12B886);
-            // Draw grid box
             int grid_x = win->x + 10;
             int grid_y = win->y + 50;
             int grid_w = win->w - 20;
@@ -318,17 +362,14 @@ void gui_draw(void) {
             draw_rect(grid_x, grid_y, grid_w, grid_h, 0x111111);
             draw_rect_outline(grid_x, grid_y, grid_w, grid_h, 0x12B886);
 
-            // Draw grid lines
             for (int gx = 20; gx < grid_w; gx += 20) {
                 for (int gy = 10; gy < grid_h; gy += 10) {
                     draw_pixel(grid_x + gx, grid_y + gy, 0x002E00);
                 }
             }
 
-            // Draw Neon Green line graph
             int last_gy = -1;
             for (int gi = 0; gi < 60; gi++) {
-                // Map array values to grid heights
                 int val = sysmon_values[gi];
                 int lx = grid_x + 5 + gi * 5;
                 int ly = grid_y + grid_h - 10 - (val * (grid_h - 20) / 100);
@@ -337,7 +378,6 @@ void gui_draw(void) {
                 if (ly >= grid_y + grid_h) ly = grid_y + grid_h - 1;
 
                 if (last_gy != -1) {
-                    // Connect dots with small vertical rows for continuity
                     int prev_lx = lx - 5;
                     if (ly == last_gy) {
                         for (int x_fill = prev_lx; x_fill <= lx; x_fill++) {
@@ -359,11 +399,10 @@ void gui_draw(void) {
 
     // 4. Draw Start Menu (pop-up over desktop/windows if open)
     if (start_menu_open) {
-        // Drop shadow outline
         draw_rect_translucent(6, 196, 288, 368, 0x1971C2, 60);
 
-        // Main frame (Aero blue translucent)
-        draw_rect_translucent(10, 200, 280, 360, 0x3b5f8f, 220);
+        // Glass blue frame
+        draw_rect_translucent(10, 200, 280, 360, 0x1A365D, 220);
         draw_rect_outline(10, 200, 280, 360, 0x1971C2);
 
         // Left Pane (White Apps Panel)
@@ -375,11 +414,38 @@ void gui_draw(void) {
         draw_string(24, 280, "Calculator", 0x212529);
         draw_string(24, 310, "System Monitor", 0x212529);
 
-        // Right Pane (Glass shortcuts list)
+        // Search Programs box at the bottom left
+        draw_rect(20, 522, 142, 22, 0xFAFAFA);
+        draw_rect_outline(20, 522, 142, 22, 0xCED4DA);
+        draw_string(26, 526, "Search programs", 0x868E96);
+
+        // Right Pane (shortcuts list)
         draw_string(176, 220, "Documents", 0xFFFFFF);
         draw_string(176, 250, "Pictures", 0xFFFFFF);
         draw_string(176, 280, "Games", 0xFFFFFF);
         draw_string(176, 310, "Control Panel", 0xFFFFFF);
+
+        // User profile smiley avatar box
+        int pic_x = 230;
+        int pic_y = 210;
+        int pic_w = 40;
+        int pic_h = 40;
+        draw_rect(pic_x, pic_y, pic_w, pic_h, 0x74C0FC);
+        draw_rect_outline(pic_x, pic_y, pic_w, pic_h, 0xFFFFFF);
+        draw_rect_outline(pic_x - 1, pic_y - 1, pic_w + 2, pic_h + 2, 0xADB5BD);
+        // Smiley Face profile picture
+        draw_circle(pic_x + 20, pic_y + 20, 10, 0xFFD43B);
+        draw_pixel(pic_x + 17, pic_y + 17, 0x000000);
+        draw_pixel(pic_x + 23, pic_y + 17, 0x000000);
+        draw_pixel(pic_x + 16, pic_y + 23, 0x000000);
+        draw_pixel(pic_x + 17, pic_y + 24, 0x000000);
+        draw_pixel(pic_x + 18, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 19, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 20, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 21, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 22, pic_y + 25, 0x000000);
+        draw_pixel(pic_x + 23, pic_y + 24, 0x000000);
+        draw_pixel(pic_x + 24, pic_y + 23, 0x000000);
 
         // Shutdown Button at the bottom right
         draw_rect(180, 520, 100, 28, 0xFA5252);
@@ -388,7 +454,7 @@ void gui_draw(void) {
     }
 
     // 5. Draw Taskbar (translucent glassmorphism bottom row)
-    draw_rect_translucent(0, 560, 800, 40, 0x1864AB, 180);
+    draw_rect_translucent(0, 560, 800, 40, 0x1A365D, 180);
     draw_rect(0, 560, 800, 1, 0x4DABF7); // Top light highlight line
 
     // Start Orb Button (circular blue glass orb)
@@ -396,8 +462,35 @@ void gui_draw(void) {
     draw_circle(24, 580, 14, 0x228BE6);
     draw_start_logo(24, 580);
 
-    // Clock string on the right system tray
-    // Software increment calculation
+    // Draw taskbar glassy buttons for open applications
+    char* app_names[4] = {"Comp", "Term", "Calc", "Mon"};
+    uint32_t app_colors[4] = {0xCCCCCC, 0x111111, 0x4A6FA5, 0x1E1E1E};
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        gui_window_t* w = &windows[i];
+        if (w->closed) continue;
+
+        int bx = 55 + i * 70;
+        int by = 565;
+        int bw = 64;
+        int bh = 30;
+
+        if (active_win_id == w->id) {
+            draw_rect_translucent(bx, by, bw, bh, 0x4DABF7, 180);
+            draw_rect_outline(bx, by, bw, bh, 0xFFFFFF);
+            draw_rect(bx, by + bh - 3, bw, 3, 0x228BE6); // active bottom bar
+        } else {
+            draw_rect_translucent(bx, by, bw, bh, 0x495057, 100);
+            draw_rect_outline(bx, by, bw, bh, 0xCED4DA);
+        }
+
+        // Draw small color block representing app icon
+        draw_rect(bx + 6, by + 8, 12, 12, app_colors[i]);
+        draw_rect_outline(bx + 6, by + 8, 12, 12, 0xFFFFFF);
+
+        draw_string(bx + 22, by + 10, app_names[i], 0xFFFFFF);
+    }
+
+    // System Tray clock and indicators
     ticks_counter++;
     if (ticks_counter % 100 == 0) {
         seconds++;
@@ -410,7 +503,6 @@ void gui_draw(void) {
                 if (hours > 12) hours = 1;
             }
         }
-        // Build time string
         time_str[0] = '0' + (hours / 10);
         time_str[1] = '0' + (hours % 10);
         time_str[2] = ':';
@@ -425,42 +517,63 @@ void gui_draw(void) {
         time_str[11] = '\0';
     }
 
-    draw_string(690, 572, time_str, 0xFFFFFF);
+    draw_string(725, 572, time_str, 0xFFFFFF);
 
-    // Update System Monitor values on divider
+    // Network Signal strength indicator bars
+    int net_x = 695;
+    int net_y = 588;
+    for (int bar = 0; bar < 5; bar++) {
+        int bar_h = 3 + bar * 3;
+        draw_rect(net_x + bar * 4, net_y - bar_h, 3, bar_h, 0x00FF00);
+    }
+
+    // Volume speaker tray icon
+    int vol_x = 675;
+    int vol_y = 576;
+    draw_rect(vol_x, vol_y + 3, 3, 4, 0xFFFFFF);
+    draw_pixel(vol_x + 3, vol_y + 3, 0xFFFFFF);
+    draw_pixel(vol_x + 4, vol_y + 2, 0xFFFFFF);
+    draw_pixel(vol_x + 5, vol_y + 1, 0xFFFFFF);
+    draw_pixel(vol_x + 3, vol_y + 4, 0xFFFFFF);
+    draw_pixel(vol_x + 4, vol_y + 4, 0xFFFFFF);
+    draw_pixel(vol_x + 5, vol_y + 4, 0xFFFFFF);
+    draw_pixel(vol_x + 3, vol_y + 5, 0xFFFFFF);
+    draw_pixel(vol_x + 4, vol_y + 5, 0xFFFFFF);
+    draw_pixel(vol_x + 5, vol_y + 5, 0xFFFFFF);
+    draw_pixel(vol_x + 3, vol_y + 6, 0xFFFFFF);
+    draw_pixel(vol_x + 4, vol_y + 7, 0xFFFFFF);
+    draw_pixel(vol_x + 5, vol_y + 8, 0xFFFFFF);
+
+    // Show Desktop glassy sliver on the very right
+    draw_rect_translucent(790, 560, 10, 40, 0xADB5BD, 100);
+    draw_rect(790, 560, 1, 40, 0xCED4DA);
+
+    // Update System Monitor graphs
     val_timer++;
     if (val_timer >= 20) {
         val_timer = 0;
-        // Shift values left
         for (int i = 0; i < 59; i++) {
             sysmon_values[i] = sysmon_values[i + 1];
         }
-        // Generate pseudo-random loading value (based on counter/ticks)
         int load = 10 + (ticks_counter % 7) * 10 + (mouse_x % 5) * 2;
         if (load > 100) load = 100;
         if (load < 0) load = 0;
         sysmon_values[59] = load;
     }
 
-    // 6. Draw Mouse Cursor (White pointer arrow with black outline)
+    // 6. Draw High-Fidelity White Mouse Pointer with drop shadow outline
     int mx = mouse_x;
     int my = mouse_y;
-    // Outline
-    draw_pixel(mx, my, 0x000000);
-    draw_pixel(mx, my+1, 0x000000); draw_pixel(mx+1, my+1, 0x000000);
-    draw_pixel(mx, my+2, 0x000000); draw_pixel(mx+1, my+2, 0x000000); draw_pixel(mx+2, my+2, 0x000000);
-    draw_pixel(mx, my+3, 0x000000); draw_pixel(mx+1, my+3, 0x000000); draw_pixel(mx+2, my+3, 0x000000); draw_pixel(mx+3, my+3, 0x000000);
-    draw_pixel(mx, my+4, 0x000000); draw_pixel(mx+1, my+4, 0x000000); draw_pixel(mx+2, my+4, 0x000000);
-    draw_pixel(mx, my+5, 0x000000); draw_pixel(mx+2, my+5, 0x000000); draw_pixel(mx+3, my+5, 0x000000);
-    draw_pixel(mx, my+6, 0x000000); draw_pixel(mx+3, my+6, 0x000000); draw_pixel(mx+4, my+6, 0x000000);
-    draw_pixel(mx, my+7, 0x000000); draw_pixel(mx+4, my+7, 0x000000);
-
-    // Inner White
-    draw_pixel(mx+1, my+2, 0xFFFFFF);
-    draw_pixel(mx+1, my+3, 0xFFFFFF); draw_pixel(mx+2, my+3, 0xFFFFFF);
-    draw_pixel(mx+1, my+4, 0xFFFFFF); draw_pixel(mx+2, my+4, 0xFFFFFF);
-    draw_pixel(mx+2, my+5, 0xFFFFFF);
-    draw_pixel(mx+3, my+6, 0xFFFFFF);
+    for (int r = 0; r < 20; r++) {
+        for (int c = 0; c < 12; c++) {
+            char pixel = mouse_cursor_bitmap[r][c];
+            if (pixel == 'X') {
+                draw_pixel(mx + c, my + r, 0x000000); // Black outline
+            } else if (pixel == '.') {
+                draw_pixel(mx + c, my + r, 0xFFFFFF); // White fill
+            }
+        }
+    }
 
     // 7. Blit buffer to screen
     blit_buffer();
@@ -478,7 +591,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             if (click) {
                 win->x = mx - win->drag_off_x;
                 win->y = my - win->drag_off_y;
-                // Clip bounds to avoid losing window
                 if (win->y < 0) win->y = 0;
                 if (win->y > 520) win->y = 520;
                 if (win->x < -win->w + 40) win->x = -win->w + 40;
@@ -493,20 +605,51 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
     if (click && !was_clicked) {
         was_clicked = 1;
 
-        // Check Start Menu items first if open
+        // Check Show Desktop sliver click
+        if (mx >= 790 && mx < 800 && my >= 560 && my < 600) {
+            for (int w = 0; w < MAX_WINDOWS; w++) {
+                windows[w].minimized = 1;
+            }
+            active_win_id = -1;
+            start_menu_open = 0;
+            return;
+        }
+
+        // Check taskbar buttons click
+        for (int i = 0; i < MAX_WINDOWS; i++) {
+            gui_window_t* w = &windows[i];
+            if (w->closed) continue;
+
+            int bx = 55 + i * 70;
+            int by = 565;
+            int bw = 64;
+            int bh = 30;
+            if (mx >= bx && mx < bx + bw && my >= by && my < by + bh) {
+                if (w->minimized) {
+                    w->minimized = 0;
+                    active_win_id = w->id;
+                } else if (active_win_id == w->id) {
+                    w->minimized = 1;
+                    active_win_id = -1;
+                } else {
+                    active_win_id = w->id;
+                }
+                start_menu_open = 0;
+                return;
+            }
+        }
+
+        // Check Start Menu items if open
         if (start_menu_open) {
             // Clicked Shutdown button
             if (mx >= 180 && mx < 280 && my >= 520 && my < 548) {
                 gui_write_string("Shutting down...\n");
-                // ACPI Shutdown / QEMU Shutdown register
                 outw(0x604, 0x2000); // Standard QEMU shutdown port
                 __asm__ volatile("cli; hlt");
             }
             // Clicked App shortcuts inside start menu
-            // Column left (white applications pane)
             if (mx >= 16 && mx < 166) {
                 if (my >= 210 && my < 240) {
-                    // Computer Info
                     windows[0].closed = 0;
                     windows[0].minimized = 0;
                     active_win_id = 0;
@@ -514,7 +657,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     return;
                 }
                 if (my >= 240 && my < 270) {
-                    // Terminal
                     windows[1].closed = 0;
                     windows[1].minimized = 0;
                     active_win_id = 1;
@@ -522,7 +664,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     return;
                 }
                 if (my >= 270 && my < 300) {
-                    // Calculator
                     windows[2].closed = 0;
                     windows[2].minimized = 0;
                     active_win_id = 2;
@@ -530,7 +671,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     return;
                 }
                 if (my >= 300 && my < 330) {
-                    // System Monitor
                     windows[3].closed = 0;
                     windows[3].minimized = 0;
                     active_win_id = 3;
@@ -552,28 +692,24 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         // Check Desktop Icons
-        // Icon 0: Computer (20, 20) -> w:50, h:50 bounds
         if (mx >= 14 && mx < 70 && my >= 20 && my < 70) {
             windows[0].closed = 0;
             windows[0].minimized = 0;
             active_win_id = 0;
             return;
         }
-        // Icon 1: Terminal (20, 100)
         if (mx >= 14 && mx < 70 && my >= 100 && my < 150) {
             windows[1].closed = 0;
             windows[1].minimized = 0;
             active_win_id = 1;
             return;
         }
-        // Icon 2: Calculator (20, 180)
         if (mx >= 14 && mx < 70 && my >= 180 && my < 230) {
             windows[2].closed = 0;
             windows[2].minimized = 0;
             active_win_id = 2;
             return;
         }
-        // Icon 3: System Monitor (20, 260)
         if (mx >= 14 && mx < 70 && my >= 260 && my < 310) {
             windows[3].closed = 0;
             windows[3].minimized = 0;
@@ -582,7 +718,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         // Check Window Clicks (from top priority down)
-        // Since active_win_id is on top, check it first!
         int win_order[MAX_WINDOWS];
         int idx = 0;
         if (active_win_id >= 0) {
@@ -604,8 +739,17 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                 active_win_id = win->id; // Focus this window!
 
                 // Check Close Button
-                if (mx >= win->x + win->w - 20 && mx < win->x + win->w - 4 && my >= win->y + 4 && my < win->y + 20) {
+                int bx_close = win->x + win->w - 18;
+                if (mx >= bx_close && mx < bx_close + 12 && my >= win->y + 4 && my < win->y + 16) {
                     win->closed = 1;
+                    if (active_win_id == win->id) active_win_id = -1;
+                    return;
+                }
+
+                // Check Minimize Button
+                int bx_min = win->x + win->w - 50;
+                if (mx >= bx_min && mx < bx_min + 12 && my >= win->y + 4 && my < win->y + 16) {
+                    win->minimized = 1;
                     if (active_win_id == win->id) active_win_id = -1;
                     return;
                 }
@@ -653,8 +797,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     calc_op = 0;
                                     calc_new_number = 1;
                                 } else if (key == '=') {
-                                    op2 = strcmp(calc_buf, "") == 0 ? 0 : (int)calc_buf[0] - '0'; // simplify parser
-                                    // Let's do simple ascii to integer conversion
                                     int temp_val = 0;
                                     for (int s = 0; calc_buf[s] != '\0'; s++) {
                                         temp_val = temp_val * 10 + (calc_buf[s] - '0');
@@ -670,7 +812,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     int_to_ascii(res, calc_buf);
                                     calc_new_number = 1;
                                     calc_op = 0;
-                                } else { // operations: +, -, *, /
+                                } else {
                                     int temp_val = 0;
                                     for (int s = 0; calc_buf[s] != '\0'; s++) {
                                         temp_val = temp_val * 10 + (calc_buf[s] - '0');
@@ -684,7 +826,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                         }
                     }
                 }
-                return; // Click consumed inside window
+                return;
             }
         }
     }
@@ -696,13 +838,11 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 
 /* Keyboard character routing to focused Terminal window */
 void gui_handle_keyboard(char c) {
-    if (active_win_id != 1) return; // Only process keyboard if terminal is active
+    if (active_win_id != 1) return;
 
     if (c == '\n') {
-        // Execute terminal command
         gui_write_char('\n');
         gui_execute_command(command_buffer);
-        // Print new prompt line
         memset(command_buffer, 0, sizeof(command_buffer));
         cmd_buf_idx = 0;
     } else if (c == '\b') {
