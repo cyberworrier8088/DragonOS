@@ -1,6 +1,7 @@
 #include "kheap.h"
 #include "pmm.h"
 #include "../libc/string.h"
+#include "../drivers/serial.h"
 
 typedef struct heap_block {
     size_t size;
@@ -11,10 +12,14 @@ typedef struct heap_block {
 static heap_block_t* heap_head = 0;
 
 void kheap_init(void) {
-    // Initial heap allocation (32MB for Doom and allocations)
-    void* initial_pages = pmm_alloc_pages(8192);
+    // Initial heap allocation (4MB, which fits Buddy Allocator maximum order of 10)
+    void* initial_pages = pmm_alloc_pages(1024);
+    if (!initial_pages) {
+        print_serial("[kheap] Fatal: failed to allocate initial heap pages!\n");
+        return;
+    }
     heap_head = (heap_block_t*)initial_pages;
-    heap_head->size = 8192 * PAGE_SIZE - sizeof(heap_block_t);
+    heap_head->size = 1024 * PAGE_SIZE - sizeof(heap_block_t);
     heap_head->free = 1;
     heap_head->next = 0;
 }

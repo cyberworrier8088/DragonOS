@@ -663,7 +663,7 @@ void gui_draw(void) {
     draw_hline(12, tby + 2, screen_width - 24, 0x333333);
 
     /* Centered app icons */
-    int icon_count = 5; /* Start + 4 apps */
+    int icon_count = 6; /* Start + 5 apps */
     int icon_size = 32;
     int icon_gap = 6;
     int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
@@ -676,8 +676,8 @@ void gui_draw(void) {
     draw_win11_logo(start_x + icon_size / 2, start_y + icon_size / 2, WIN11_ACCENT_LIGHT);
 
     /* App taskbar icons */
-    uint32_t app_icon_colors[4] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A};
-    char* app_icon_syms[4] = {"PC", ">_", "+-", "/\\"};
+    uint32_t app_icon_colors[5] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A, 0xC21807};
+    char* app_icon_syms[5] = {"PC", ">_", "+-", "/\\", "DM"};
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         gui_window_t* w = &windows[i];

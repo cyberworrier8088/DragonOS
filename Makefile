@@ -98,7 +98,8 @@ limine-bin/limine:
 
 isodir/boot/doom1.wad:
 	mkdir -p isodir/boot
-	curl -L "https://github.com/the-classic-doom-assets/shareware-wad/blob/main/doom1.wad?raw=true" -o isodir/boot/doom1.wad || wget -O isodir/boot/doom1.wad "https://github.com/the-classic-doom-assets/shareware-wad/blob/main/doom1.wad?raw=true"
+	curl -L "https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad" -o isodir/boot/doom1.wad || wget -O isodir/boot/doom1.wad "https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad"
+
 
 dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
 	mkdir -p isodir/boot
