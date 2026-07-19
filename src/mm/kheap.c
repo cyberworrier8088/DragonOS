@@ -1,5 +1,6 @@
 #include "kheap.h"
 #include "pmm.h"
+#include "../libc/string.h"
 
 typedef struct heap_block {
     size_t size;
@@ -10,10 +11,10 @@ typedef struct heap_block {
 static heap_block_t* heap_head = 0;
 
 void kheap_init(void) {
-    // Initial heap allocation (e.g. 1MB)
-    void* initial_pages = pmm_alloc_pages(256);
+    // Initial heap allocation (32MB for Doom and allocations)
+    void* initial_pages = pmm_alloc_pages(8192);
     heap_head = (heap_block_t*)initial_pages;
-    heap_head->size = 256 * PAGE_SIZE - sizeof(heap_block_t);
+    heap_head->size = 8192 * PAGE_SIZE - sizeof(heap_block_t);
     heap_head->free = 1;
     heap_head->next = 0;
 }
@@ -79,4 +80,34 @@ void kfree(void* ptr) {
             curr = curr->next;
         }
     }
+}
+
+void* krealloc(void* ptr, size_t size) {
+    if (!ptr) return kmalloc(size);
+    if (size == 0) {
+        kfree(ptr);
+        return 0;
+    }
+    
+    heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - sizeof(heap_block_t));
+    if (block->size >= size) {
+        return ptr; // Existing block is large enough
+    }
+    
+    void* new_ptr = kmalloc(size);
+    if (!new_ptr) return 0; // OOM
+    
+    // Copy old contents
+    memcpy(new_ptr, ptr, block->size);
+    kfree(ptr);
+    return new_ptr;
+}
+
+void* kcalloc(size_t num, size_t size) {
+    size_t total = num * size;
+    void* ptr = kmalloc(total);
+    if (ptr) {
+        memset(ptr, 0, total);
+    }
+    return ptr;
 }

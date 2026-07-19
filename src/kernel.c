@@ -10,6 +10,7 @@
 #include "mm/paging.h"
 #include "drivers/pci.h"
 #include "fs/vfs.h"
+#include "libc/string.h"
 #include "../limine-bin/limine.h"
 
 // Set the base revision to 4
@@ -34,6 +35,13 @@ static volatile struct limine_memmap_request memmap_request = {
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_hhdm_request hhdm_request = {
     .id = LIMINE_HHDM_REQUEST,
+    .revision = 0
+};
+
+// Request bootloader modules
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_module_request module_request = {
+    .id = LIMINE_MODULE_REQUEST,
     .revision = 0
 };
 
@@ -105,6 +113,37 @@ void kernel_main(void) {
 
     /* Initialize POSIX VFS */
     init_vfs();
+
+    /* Register bootloader modules in POSIX VFS */
+    if (module_request.response != NULL) {
+        for (uint64_t i = 0; i < module_request.response->module_count; i++) {
+            struct limine_file* file = module_request.response->modules[i];
+            print_serial("[Limine] Loaded module path: ");
+            print_serial(file->path);
+            print_serial("\n");
+            
+            // Map the raw path
+            vfs_register_file(file->path, file->address, file->size);
+            
+            // Also map basename
+            const char* base = file->path;
+            for (const char* p = file->path; *p; p++) {
+                if (*p == '/') base = p + 1;
+            }
+            if (base != file->path) {
+                vfs_register_file(base, file->address, file->size);
+            }
+            
+            // Also map leading slash variants
+            if (file->path[0] != '/') {
+                char temp[128] = "/";
+                strcat(temp, file->path);
+                vfs_register_file(temp, file->address, file->size);
+            } else {
+                vfs_register_file(file->path + 1, file->address, file->size);
+            }
+        }
+    }
 
     // Verify POSIX VFS & File Descriptors
     int fd = open("/sys/meminfo", 0);

@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MAX_WINDOWS 4
+#define MAX_WINDOWS 5
 
 typedef struct {
     int x, y, w, h;

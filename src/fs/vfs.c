@@ -5,8 +5,28 @@
 #include "../mm/pmm.h"
 
 static file_desc_t fd_table[MAX_FD];
-static vfs_node_t vfs_nodes[8];
+static vfs_node_t vfs_nodes[32];
 static int vfs_node_count = 0;
+
+static int dev_null_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer);
+
+static int dynamic_mem_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
+    if (offset >= (uint32_t)node->size) return 0;
+    uint32_t to_read = (uint32_t)node->size - offset;
+    if (to_read > size) to_read = size;
+    memcpy(buffer, (uint8_t*)node->private_data + offset, to_read);
+    return to_read;
+}
+
+void vfs_register_file(const char* name, void* buffer, uint32_t size) {
+    if (vfs_node_count >= 32) return;
+    vfs_node_t* node = &vfs_nodes[vfs_node_count++];
+    strcpy(node->name, name);
+    node->size = size;
+    node->read = dynamic_mem_read;
+    node->write = dev_null_write; // writing is ignored
+    node->private_data = buffer;
+}
 
 // Standard stream nodes
 static vfs_node_t stdin_node;
@@ -184,4 +204,20 @@ int write(int fd, const void* buf, int count) {
         f->offset += bytes_written;
     }
     return bytes_written;
+}
+
+int lseek(int fd, int offset, int whence) {
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    file_desc_t* f = &fd_table[fd];
+    
+    if (whence == 0) { // SEEK_SET
+        f->offset = offset;
+    } else if (whence == 1) { // SEEK_CUR
+        f->offset += offset;
+    } else if (whence == 2) { // SEEK_END
+        f->offset = f->node->size + offset;
+    } else {
+        return -1;
+    }
+    return f->offset;
 }

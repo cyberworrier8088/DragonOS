@@ -67,6 +67,10 @@ static void keyboard_callback(registers_t* regs) {
     (void)regs;
     uint8_t scancode = inb(0x60);
 
+    // Call Doom raw keyboard hook
+    extern void doom_handle_keyboard_raw(uint8_t scancode);
+    doom_handle_keyboard_raw(scancode);
+
     /* Check if it's a key release (break code) */
     if (scancode & 0x80) {
         uint8_t released_scancode = scancode & 0x7F;

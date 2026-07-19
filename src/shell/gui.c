@@ -9,8 +9,14 @@
 #include "../mm/kheap.h"
 #include "../drivers/pci.h"
 
+#include "../libc/stdlib.h"
+
 gui_window_t* windows;
 int active_win_id = -1;
+
+uint32_t* doom_window_buffer = 0;
+int doom_running = 0;
+jmp_buf doom_exit_jmp;
 
 /* Start Menu State */
 int start_menu_open = 0;
@@ -217,6 +223,20 @@ void init_gui(void) {
     windows[3].dragging = 0;
     windows[3].id = 3;
 
+    /* 4: Doom */
+    windows[4].x = 80;
+    windows[4].y = 40;
+    windows[4].w = 640;
+    windows[4].h = 432;
+    strcpy(windows[4].title, "DOOM");
+    windows[4].active = 0;
+    windows[4].closed = 1;
+    windows[4].minimized = 0;
+    windows[4].dragging = 0;
+    windows[4].id = 4;
+
+    doom_window_buffer = (uint32_t*)kmalloc(640 * 400 * 4);
+
     /* Initialize terminal buffer */
     memset(term_lines, 0, sizeof(term_lines));
     strcpy(term_lines[0], "DragonOS Terminal v2.0");
@@ -308,14 +328,15 @@ static void draw_window_chrome(gui_window_t* win) {
  * ============================================================ */
 static void draw_desktop_icons(void) {
     /* Icon layout: vertical stack on left side */
-    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[4] = {
+    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[5] = {
         {"System",   0x0078D4, 0xFFFFFF, "PC"},
         {"Terminal", 0x0C0C0C, 0x00FF00, ">_"},
         {"Calc",     0x202020, 0xFFFFFF, "+-"},
         {"Monitor",  0x1A1A1A, 0x00CC6A, "/\\"},
+        {"DOOM",     0xC21807, 0xFFFFFF, "DM"},
     };
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int ix = 30;
         int iy = 30 + i * 90;
 
@@ -513,6 +534,19 @@ static void draw_window_content(gui_window_t* win) {
         int_to_ascii(sysmon_values[59], val_str);
         strcat(val_str, "%");
         draw_string(gx + gw - 50, gy + 4, val_str, 0x00CC6A);
+    }
+    else if (win->id == 4) {
+        /* ---- Doom window ---- */
+        if (doom_window_buffer) {
+            for (int dy = 0; dy < 400; dy++) {
+                uint32_t* dest_row = &back_buffer[(content_y + dy) * screen_width + x];
+                uint32_t* src_row = &doom_window_buffer[dy * 640];
+                memcpy(dest_row, src_row, 640 * 4);
+            }
+        } else {
+            draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x000000);
+            draw_string(x + w/2 - 40, content_y + h/2 - 8, "Loading DOOM...", 0xFFFFFF);
+        }
     }
 }
 
@@ -875,7 +909,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         /* Desktop icon clicks */
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             int ix = 30;
             int iy = 30 + i * 90;
             if (mx >= ix && mx < ix + 48 && my >= iy && my < iy + 70) {
@@ -883,6 +917,18 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                 windows[i].minimized = 0;
                 active_win_id = i;
                 start_menu_open = 0;
+
+                if (i == 4 && !doom_running) {
+                    extern void doomgeneric_Create(int argc, char** argv);
+                    char* doom_argv[] = {"doomgeneric", "-iwad", "/boot/doom1.wad"};
+                    print_serial("[Doom] Launching game loop via setjmp...\n");
+                    if (setjmp(doom_exit_jmp) == 0) {
+                        doom_running = 1;
+                        doomgeneric_Create(3, doom_argv);
+                    } else {
+                        print_serial("[Doom] Gracefully returned to desktop.\n");
+                    }
+                }
                 return;
             }
         }

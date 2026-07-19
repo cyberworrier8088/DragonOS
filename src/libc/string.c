@@ -124,3 +124,84 @@ char* strcat(char* dest, const char* src) {
         ;
     return dest;
 }
+
+#include "../mm/kheap.h"
+
+int strcasecmp(const char* s1, const char* s2) {
+    int i = 0;
+    while (s1[i] && s2[i]) {
+        char c1 = s1[i];
+        char c2 = s2[i];
+        if (c1 >= 'A' && c1 <= 'Z') c1 = c1 - 'A' + 'a';
+        if (c2 >= 'A' && c2 <= 'Z') c2 = c2 - 'A' + 'a';
+        if (c1 != c2) return c1 - c2;
+        i++;
+    }
+    char c1 = s1[i];
+    char c2 = s2[i];
+    if (c1 >= 'A' && c1 <= 'Z') c1 = c1 - 'A' + 'a';
+    if (c2 >= 'A' && c2 <= 'Z') c2 = c2 - 'A' + 'a';
+    return c1 - c2;
+}
+
+int strncasecmp(const char* s1, const char* s2, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        char c1 = s1[i];
+        char c2 = s2[i];
+        if (c1 >= 'A' && c1 <= 'Z') c1 = c1 - 'A' + 'a';
+        if (c2 >= 'A' && c2 <= 'Z') c2 = c2 - 'A' + 'a';
+        if (c1 != c2) return c1 - c2;
+        if (s1[i] == '\0' || s2[i] == '\0') break;
+    }
+    return 0;
+}
+
+char* strrchr(const char* s, int c) {
+    char* last = 0;
+    while (*s) {
+        if (*s == c) last = (char*)s;
+        s++;
+    }
+    return last;
+}
+
+char* strstr(const char* haystack, const char* needle) {
+    size_t n_len = strlen(needle);
+    if (n_len == 0) return (char*)haystack;
+    while (*haystack) {
+        if (strncmp(haystack, needle, n_len) == 0) {
+            return (char*)haystack;
+        }
+        haystack++;
+    }
+    return 0;
+}
+
+char* strdup(const char* s) {
+    size_t len = strlen(s);
+    char* d = kmalloc(len + 1);
+    if (d) {
+        memcpy(d, s, len + 1);
+    }
+    return d;
+}
+
+char* strncpy(char* dest, const char* src, size_t n) {
+    size_t i;
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    for (; i < n; i++) {
+        dest[i] = '\0';
+    }
+    return dest;
+}
+
+char* strchr(const char* s, int c) {
+    while (*s) {
+        if (*s == c) return (char*)s;
+        s++;
+    }
+    if (c == '\0') return (char*)s;
+    return 0;
+}
