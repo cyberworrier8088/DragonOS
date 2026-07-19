@@ -300,6 +300,14 @@ void init_gui(void) {
     windows[5].dragging = 0;
     windows[5].id = 5;
 
+    for (int i = 0; i < MAX_WINDOWS; i++) {
+        windows[i].maximized = 0;
+        windows[i].old_x = windows[i].x;
+        windows[i].old_y = windows[i].y;
+        windows[i].old_w = windows[i].w;
+        windows[i].old_h = windows[i].h;
+    }
+
     doom_window_buffer = (uint32_t*)kmalloc(640 * 400 * 4);
 
     /* Initialize terminal buffer */
@@ -623,14 +631,19 @@ static void draw_window_content(gui_window_t* win) {
     }
     else if (win->id == 4) {
         /* ---- Doom window ---- */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x000000);
         if (doom_window_buffer) {
-            for (int dy = 0; dy < 400; dy++) {
-                uint32_t* dest_row = &back_buffer[(content_y + dy) * screen_width + x];
-                uint32_t* src_row = &doom_window_buffer[dy * 640];
+            int dx = (w - 640) / 2;
+            int dy = (content_h - 400) / 2;
+            if (dx < 0) dx = 0;
+            if (dy < 0) dy = 0;
+            for (int r = 0; r < 400; r++) {
+                if (content_y + dy + r >= content_y + content_h) break;
+                uint32_t* dest_row = &back_buffer[(content_y + dy + r) * screen_width + (x + dx)];
+                uint32_t* src_row = &doom_window_buffer[r * 640];
                 memcpy(dest_row, src_row, 640 * 4);
             }
         } else {
-            draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x000000);
             draw_string(x + w/2 - 40, content_y + h/2 - 8, "Loading DOOM...", 0xFFFFFF);
         }
     }
@@ -1116,6 +1129,29 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     return;
                 }
 
+                /* Maximize button */
+                int max_x = close_x - btn_w;
+                if (mx >= max_x && mx < max_x + btn_w && my >= win->y && my < win->y + 30) {
+                    if (win->maximized) {
+                        win->maximized = 0;
+                        win->x = win->old_x;
+                        win->y = win->old_y;
+                        win->w = win->old_w;
+                        win->h = win->old_h;
+                    } else {
+                        win->maximized = 1;
+                        win->old_x = win->x;
+                        win->old_y = win->y;
+                        win->old_w = win->w;
+                        win->old_h = win->h;
+                        win->x = 0;
+                        win->y = 0;
+                        win->w = screen_width;
+                        win->h = screen_height - 48;
+                    }
+                    return;
+                }
+
                 /* Minimize button */
                 int min_x = close_x - btn_w * 2;
                 if (mx >= min_x && mx < min_x + btn_w && my >= win->y && my < win->y + 30) {
@@ -1126,9 +1162,11 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 
                 /* Titlebar drag */
                 if (my >= win->y && my < win->y + titlebar_h) {
-                    win->dragging = 1;
-                    win->drag_off_x = mx - win->x;
-                    win->drag_off_y = my - win->y;
+                    if (!win->maximized) {
+                        win->dragging = 1;
+                        win->drag_off_x = mx - win->x;
+                        win->drag_off_y = my - win->y;
+                    }
                     return;
                 }
 

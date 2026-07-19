@@ -14,6 +14,8 @@ typedef struct {
     int dragging;
     int drag_off_x, drag_off_y;
     int id; // 0 = Computer, 1 = Terminal, 2 = Calculator, 3 = System Monitor
+    int maximized;
+    int old_x, old_y, old_w, old_h;
 } gui_window_t;
 
 void init_gui(void);
