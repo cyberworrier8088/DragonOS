@@ -383,15 +383,28 @@ void draw_desktop_gradient(void) {
 void blit_buffer(void) {
     if (framebuffer) {
         uint32_t pitch_pixels = screen_pitch / 4;
-        for (uint32_t y = 0; y < screen_height; y++) {
-            uint32_t* dest = &framebuffer[y * pitch_pixels];
-            uint32_t* src = &back_buffer[y * screen_width];
-            for (uint32_t x = 0; x < screen_width; x++) {
-                uint32_t color = src[x];
+        if (pitch_pixels == screen_width) {
+            uint32_t total_pixels = screen_width * screen_height;
+            uint32_t* dest = framebuffer;
+            uint32_t* src = back_buffer;
+            for (uint32_t i = 0; i < total_pixels; i++) {
+                uint32_t color = src[i];
                 uint8_t r = hdr_lut[(color >> 16) & 0xFF];
                 uint8_t g = hdr_lut[(color >> 8) & 0xFF];
                 uint8_t b = hdr_lut[color & 0xFF];
-                dest[x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+                dest[i] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+            }
+        } else {
+            for (uint32_t y = 0; y < screen_height; y++) {
+                uint32_t* dest = &framebuffer[y * pitch_pixels];
+                uint32_t* src = &back_buffer[y * screen_width];
+                for (uint32_t x = 0; x < screen_width; x++) {
+                    uint32_t color = src[x];
+                    uint8_t r = hdr_lut[(color >> 16) & 0xFF];
+                    uint8_t g = hdr_lut[(color >> 8) & 0xFF];
+                    uint8_t b = hdr_lut[color & 0xFF];
+                    dest[x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+                }
             }
         }
     }

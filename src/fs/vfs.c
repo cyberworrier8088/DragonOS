@@ -221,3 +221,35 @@ int lseek(int fd, int offset, int whence) {
     }
     return f->offset;
 }
+
+int stat(const char* pathname, struct stat* statbuf) {
+    if (!statbuf) return -1;
+    for (int i = 0; i < vfs_node_count; i++) {
+        if (strcmp(vfs_nodes[i].name, pathname) == 0) {
+            memset(statbuf, 0, sizeof(struct stat));
+            statbuf->st_size = vfs_nodes[i].size;
+            statbuf->st_mode = 0100666; // S_IFREG | 0666
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int fstat(int fd, struct stat* statbuf) {
+    if (!statbuf) return -1;
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    memset(statbuf, 0, sizeof(struct stat));
+    statbuf->st_size = fd_table[fd].node->size;
+    statbuf->st_mode = 0100666;
+    return 0;
+}
+
+int access(const char* pathname, int mode) {
+    (void)mode;
+    for (int i = 0; i < vfs_node_count; i++) {
+        if (strcmp(vfs_nodes[i].name, pathname) == 0) {
+            return 0;
+        }
+    }
+    return -1;
+}

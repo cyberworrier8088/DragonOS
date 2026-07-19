@@ -31,4 +31,22 @@ int read(int fd, void* buf, int count);
 int write(int fd, const void* buf, int count);
 int lseek(int fd, int offset, int whence);
 
+struct stat {
+    uint32_t st_dev;
+    uint32_t st_ino;
+    uint32_t st_mode;
+    uint32_t st_nlink;
+    uint32_t st_uid;
+    uint32_t st_gid;
+    uint32_t st_rdev;
+    uint64_t st_size;
+    uint64_t st_atime;
+    uint64_t st_mtime;
+    uint64_t st_ctime;
+};
+
+int stat(const char* pathname, struct stat* statbuf);
+int fstat(int fd, struct stat* statbuf);
+int access(const char* pathname, int mode);
+
 #endif

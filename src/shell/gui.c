@@ -299,27 +299,41 @@ static void draw_window_chrome(gui_window_t* win) {
     int btn_h = 28;
     int btn_y = y + 2;
 
-    /* Close button */
+    /* Close button hover check */
     int close_x = x + w - btn_w;
-    /* Draw close button background only as rounded top-right */
-    draw_rect(close_x, btn_y, btn_w - radius, btn_h, WIN11_CLOSE_HOVER);
-    draw_rounded_rect(close_x, btn_y, btn_w, btn_h, radius, WIN11_CLOSE_HOVER);
+    int mouse_in_close = (mouse_x >= close_x && mouse_x < close_x + btn_w && mouse_y >= btn_y && mouse_y < btn_y + btn_h);
+    uint32_t close_bg = mouse_in_close ? 0xE81123 : tb_color;
+    uint32_t close_fg = mouse_in_close ? 0xFFFFFF : (is_active ? 0x808080 : 0x505050);
+
+    /* Draw close button background if hovered */
+    if (mouse_in_close) {
+        draw_rect(close_x, btn_y, btn_w - radius, btn_h, close_bg);
+        draw_rounded_rect(close_x, btn_y, btn_w, btn_h, radius, close_bg);
+    }
     /* X symbol */
     int cx = close_x + btn_w / 2;
     int cy = btn_y + btn_h / 2;
     for (int d = -4; d <= 4; d++) {
-        draw_pixel(cx + d, cy + d, 0xFFFFFF);
-        draw_pixel(cx + d, cy - d, 0xFFFFFF);
+        draw_pixel(cx + d, cy + d, close_fg);
+        draw_pixel(cx + d, cy - d, close_fg);
     }
 
-    /* Maximize button */
+    /* Maximize button hover check */
     int max_x = close_x - btn_w;
-    draw_rect(max_x, btn_y, btn_w, btn_h, tb_color);
+    int mouse_in_max = (mouse_x >= max_x && mouse_x < max_x + btn_w && mouse_y >= btn_y && mouse_y < btn_y + btn_h);
+    uint32_t max_bg = mouse_in_max ? 0x3D3D3D : tb_color;
+    if (mouse_in_max) {
+        draw_rect(max_x, btn_y, btn_w, btn_h, max_bg);
+    }
     draw_rect_outline(max_x + btn_w/2 - 5, btn_y + btn_h/2 - 4, 10, 8, WIN11_TEXT_SECONDARY);
 
-    /* Minimize button */
+    /* Minimize button hover check */
     int min_x = max_x - btn_w;
-    draw_rect(min_x, btn_y, btn_w, btn_h, tb_color);
+    int mouse_in_min = (mouse_x >= min_x && mouse_x < min_x + btn_w && mouse_y >= btn_y && mouse_y < btn_y + btn_h);
+    uint32_t min_bg = mouse_in_min ? 0x3D3D3D : tb_color;
+    if (mouse_in_min) {
+        draw_rect(min_x, btn_y, btn_w, btn_h, min_bg);
+    }
     draw_hline(min_x + btn_w/2 - 5, btn_y + btn_h/2, 10, WIN11_TEXT_SECONDARY);
 }
 
@@ -339,6 +353,12 @@ static void draw_desktop_icons(void) {
     for (int i = 0; i < 5; i++) {
         int ix = 30;
         int iy = 30 + i * 90;
+
+        /* Hover selection card */
+        int mouse_in_icon = (mouse_x >= ix - 6 && mouse_x < ix + 48 + 6 && mouse_y >= iy - 6 && mouse_y < iy + 76);
+        if (mouse_in_icon) {
+            draw_rounded_rect_translucent(ix - 6, iy - 6, 48 + 12, 70 + 12, 6, 0xFFFFFF, 35);
+        }
 
         /* Icon tile background - rounded square */
         draw_rounded_rect(ix, iy, 48, 48, 8, icons[i].bg);
@@ -624,8 +644,9 @@ void gui_draw(void) {
             int tx = grid_x + col * (tile_w + gap);
             int ty = grid_y + row * (tile_h + gap);
 
-            /* Tile background */
-            draw_rounded_rect(tx, ty, tile_w, tile_h, 6, 0x3B3B3B);
+            /* Tile background with hover check */
+            int mouse_in_tile = (mouse_x >= tx && mouse_x < tx + tile_w && mouse_y >= ty && mouse_y < ty + tile_h);
+            draw_rounded_rect(tx, ty, tile_w, tile_h, 6, mouse_in_tile ? 0x4D4D4D : 0x3B3B3B);
 
             /* Icon square */
             draw_rounded_rect(tx + 8, ty + 8, 28, 28, 4, pinned[i].color);
@@ -645,10 +666,11 @@ void gui_draw(void) {
 
         draw_string(sm_x + 56, sm_y + sm_h - 56, "User", 0xFFFFFF);
 
-        /* Power button */
+        /* Power button with hover check */
         int pw_x = sm_x + sm_w - 44;
         int pw_y = sm_y + sm_h - 64;
-        draw_rounded_rect(pw_x, pw_y, 28, 28, 4, 0x3B3B3B);
+        int mouse_in_pw = (mouse_x >= pw_x && mouse_x < pw_x + 28 && mouse_y >= pw_y && mouse_y < pw_y + 28);
+        draw_rounded_rect(pw_x, pw_y, 28, 28, 4, mouse_in_pw ? 0x4D4D4D : 0x3B3B3B);
         draw_circle(pw_x + 14, pw_y + 16, 6, 0xFFFFFF);
         draw_vline(pw_x + 14, pw_y + 8, 6, 0xFFFFFF);
     }
@@ -672,7 +694,8 @@ void gui_draw(void) {
     /* Start button (Windows 11 4-pane logo) */
     int start_x = icons_start_x;
     int start_y = tby + (tb_h - icon_size) / 2;
-    draw_rounded_rect(start_x, start_y, icon_size, icon_size, 4, 0x333333);
+    int mouse_in_start = (mouse_x >= start_x && mouse_x < start_x + icon_size && mouse_y >= start_y && mouse_y < start_y + icon_size);
+    draw_rounded_rect(start_x, start_y, icon_size, icon_size, 4, mouse_in_start ? 0x444444 : 0x333333);
     draw_win11_logo(start_x + icon_size / 2, start_y + icon_size / 2, WIN11_ACCENT_LIGHT);
 
     /* App taskbar icons */
@@ -685,8 +708,14 @@ void gui_draw(void) {
         int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
         int iy = tby + (tb_h - icon_size) / 2;
 
-        /* Icon background */
-        uint32_t bg = (active_win_id == w->id) ? 0x3D3D3D : 0x2D2D2D;
+        /* Icon background with hover */
+        int mouse_in_app = (mouse_x >= ix && mouse_x < ix + icon_size && mouse_y >= iy && mouse_y < iy + icon_size);
+        uint32_t bg;
+        if (active_win_id == w->id) {
+            bg = mouse_in_app ? 0x4D4D4D : 0x3D3D3D;
+        } else {
+            bg = mouse_in_app ? 0x3D3D3D : 0x2D2D2D;
+        }
         draw_rounded_rect(ix, iy, icon_size, icon_size, 4, bg);
 
         /* Small colored icon */
