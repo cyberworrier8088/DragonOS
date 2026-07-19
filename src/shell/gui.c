@@ -18,6 +18,7 @@ int active_win_id = -1;
 uint32_t* doom_window_buffer = 0;
 int doom_running = 0;
 jmp_buf doom_exit_jmp;
+int gui_was_clicked = 0;
 
 /* Start Menu State */
 int start_menu_open = 0;
@@ -965,7 +966,6 @@ void gui_draw(void) {
  * ============================================================ */
 void gui_handle_mouse(int mx, int my, int click, int r_click) {
     (void)r_click;
-    static int was_clicked = 0;
 
     /* Dragging active window */
     if (active_win_id >= 0 && active_win_id < MAX_WINDOWS) {
@@ -985,8 +985,8 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
     }
 
-    if (click && !was_clicked) {
-        was_clicked = 1;
+    if (click && !gui_was_clicked) {
+        gui_was_clicked = 1;
 
         int tb_h = 48;
         int tby = (int)screen_height - tb_h;
@@ -1262,6 +1262,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                             doomgeneric_Create(3, doom_argv);
                                         } else {
                                             print_serial("[Doom] Gracefully returned to desktop.\n");
+                                            gui_was_clicked = 0;
                                         }
                                     }
                                     return;
@@ -1276,7 +1277,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
     }
 
     if (!click) {
-        was_clicked = 0;
+        gui_was_clicked = 0;
     }
 }
 
