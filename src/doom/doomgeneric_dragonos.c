@@ -56,11 +56,11 @@ void doom_handle_keyboard_raw(uint8_t scancode) {
         case 0x2A: doom_key = 0xa1; break; // Left Shift -> run (shift)
         
         // WASD
-        case 0x11: doom_key = 'w'; break;
-        case 0x1E: doom_key = 'a'; break;
-        case 0x1F: doom_key = 's'; break;
-        case 0x20: doom_key = 'd'; break;
-        case 0x12: doom_key = 'e'; break; // use
+        case 0x11: doom_key = 'W'; break;
+        case 0x1E: doom_key = 'A'; break;
+        case 0x1F: doom_key = 'S'; break;
+        case 0x20: doom_key = 'D'; break;
+        case 0x12: doom_key = 'E'; break; // use
         
         // Arrow Keys
         case 0x48: doom_key = 0xad; break; // Up Arrow
@@ -116,7 +116,7 @@ void DG_SleepMs(uint32_t ms) {
     uint32_t ticks_to_wait = ms / 10; // PIT runs at 100Hz (10ms per tick)
     if (ticks_to_wait == 0) ticks_to_wait = 1;
     while (get_ticks() - start < ticks_to_wait) {
-        __asm__ volatile("hlt");
+        __asm__ volatile("pause");
     }
 }
 

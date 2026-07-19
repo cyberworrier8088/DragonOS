@@ -9,8 +9,8 @@ ASFLAGS = -f elf64
 LDFLAGS = -m elf_x86_64 -T src/linker.ld
 
 # Target-specific CFLAGS for Doom source files to support floating-point returns via SSE
-src/doom/%.o: CFLAGS += -DNORMALUNIX -Isrc/doom/doomgeneric -msse -msse2 -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-missing-field-initializers -Wno-sign-compare -Wno-strict-prototypes -Wno-unused-variable -Wno-unused-but-set-variable -Wno-parentheses
-src/libc/stdlib.o: CFLAGS += -msse -msse2
+src/doom/%.o: CFLAGS += -DNORMALUNIX -Isrc/doom/doomgeneric -msse -msse2 -mstackrealign -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-missing-field-initializers -Wno-sign-compare -Wno-strict-prototypes -Wno-unused-variable -Wno-unused-but-set-variable -Wno-parentheses
+src/libc/stdlib.o: CFLAGS += -msse -msse2 -mstackrealign
 
 DOOM_SRCS = $(filter-out src/doom/doomgeneric/doomgeneric_allegro.c \
                           src/doom/doomgeneric/doomgeneric_emscripten.c \
