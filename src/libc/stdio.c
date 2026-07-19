@@ -303,3 +303,68 @@ int vfprintf(FILE* stream, const char* format, va_list ap) {
     }
     return res;
 }
+
+int feof(FILE* stream) {
+    if (!stream) return 1;
+    int fd = *(int*)stream;
+    extern file_desc_t fd_table[];
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return 1;
+    return fd_table[fd].offset >= fd_table[fd].node->size;
+}
+
+int ferror(FILE* stream) {
+    (void)stream;
+    return 0;
+}
+
+void clearerr(FILE* stream) {
+    (void)stream;
+}
+
+int getc(FILE* stream) {
+    unsigned char c;
+    if (fread(&c, 1, 1, stream) == 1) return c;
+    return -1; // EOF
+}
+
+int ungetc(int c, FILE* stream) {
+    if (!stream || c == -1) return -1;
+    int fd = *(int*)stream;
+    extern file_desc_t fd_table[];
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (fd_table[fd].offset > 0) {
+        fd_table[fd].offset--;
+    }
+    return c;
+}
+
+char* fgets(char* str, int num, FILE* stream) {
+    if (!str || num <= 0 || !stream) return 0;
+    int i = 0;
+    while (i < num - 1) {
+        int c = getc(stream);
+        if (c == -1) {
+            if (i == 0) return 0;
+            break;
+        }
+        str[i++] = (char)c;
+        if (c == '\n') break;
+    }
+    str[i] = '\0';
+    return str;
+}
+
+FILE* freopen(const char* filename, const char* mode, FILE* stream) {
+    (void)mode; (void)stream;
+    return fopen(filename, mode);
+}
+
+char* strerror(int errnum) {
+    (void)errnum;
+    return "Unknown error";
+}
+
+int __isoc99_fscanf(FILE* stream, const char* format, ...) {
+    (void)stream; (void)format;
+    return -1;
+}

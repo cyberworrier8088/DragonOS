@@ -5,7 +5,7 @@
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
 
-static file_desc_t fd_table[MAX_FD];
+file_desc_t fd_table[MAX_FD];
 static vfs_node_t vfs_nodes[32];
 static int vfs_node_count = 0;
 

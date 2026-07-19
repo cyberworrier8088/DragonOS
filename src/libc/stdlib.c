@@ -245,3 +245,99 @@ int mkdir(const char* pathname, uint32_t mode) {
     (void)pathname; (void)mode;
     return -1;
 }
+
+int _setjmp(jmp_buf env) {
+    return setjmp(env);
+}
+
+unsigned long strtoul(const char* nptr, char** endptr, int base) {
+    const char* s = nptr;
+    unsigned long acc = 0;
+    int c;
+    unsigned long any = 0;
+
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') {
+        s++;
+    }
+
+    if (base == 0) {
+        if (*s == '0') {
+            s++;
+            if (*s == 'x' || *s == 'X') {
+                s++;
+                base = 16;
+            } else {
+                base = 8;
+            }
+        } else {
+            base = 10;
+        }
+    } else if (base == 16) {
+        if (*s == '0' && (s[1] == 'x' || s[1] == 'X')) {
+            s += 2;
+        }
+    }
+
+    while ((c = *s) != '\0') {
+        if (c >= '0' && c <= '9') {
+            c -= '0';
+        } else if (c >= 'a' && c <= 'z') {
+            c -= 'a' - 10;
+        } else if (c >= 'A' && c <= 'Z') {
+            c -= 'A' - 10;
+        } else {
+            break;
+        }
+        if (c >= base) {
+            break;
+        }
+        acc = acc * base + c;
+        any = 1;
+        s++;
+    }
+
+    if (endptr != 0) {
+        *endptr = (char*)(any ? s : nptr);
+    }
+
+    return acc;
+}
+
+static int32_t tolower_table_data[384];
+static const int32_t* tolower_table = 0;
+
+const int32_t** __ctype_tolower_loc(void) {
+    if (!tolower_table) {
+        for (int i = 0; i < 384; i++) {
+            int val = i - 128;
+            if (val >= 'A' && val <= 'Z') {
+                tolower_table_data[i] = val - 'A' + 'a';
+            } else {
+                tolower_table_data[i] = val;
+            }
+        }
+        tolower_table = &tolower_table_data[128];
+    }
+    return &tolower_table;
+}
+
+double floor(double x) {
+    int i = (int)x;
+    if (x < 0 && x != (double)i) {
+        return (double)(i - 1);
+    }
+    return (double)i;
+}
+
+double pow(double base, double exp) {
+    if (exp == 0.0) return 1.0;
+    if (exp == 1.0) return base;
+    if (exp < 0.0) return 1.0 / pow(base, -exp);
+    int iexp = (int)exp;
+    if ((double)iexp == exp) {
+        double res = 1.0;
+        for (int i = 0; i < iexp; i++) res *= base;
+        return res;
+    }
+    return base;
+}

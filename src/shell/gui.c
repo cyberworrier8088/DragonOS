@@ -140,6 +140,7 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string("  ls          List mounted VFS files\n");
         gui_write_string("  cat <file>  Print file content\n");
         gui_write_string("  stat <file> Print file metadata\n");
+        gui_write_string("  lua [file]  Run Lua script or hello snippet\n");
         gui_write_string("  reboot      Reboot the computer\n");
         gui_write_string("  halt        Halt the CPU safely\n");
     } else if (strcmp(cmd, "about") == 0) {
@@ -212,6 +213,28 @@ static void gui_execute_command(const char* cmd) {
             gui_write_string("stat: cannot find file: ");
             gui_write_string(filepath);
             gui_write_string("\n");
+        }
+    } else if (strncmp(cmd, "lua ", 4) == 0 || strcmp(cmd, "lua") == 0) {
+        const char* filepath = (strcmp(cmd, "lua") == 0) ? "" : cmd + 4;
+        while (*filepath == ' ') filepath++;
+        
+        if (strlen(filepath) == 0) {
+            gui_write_string("Running built-in Lua snippet:\n");
+            extern int lua_main_string(const char* code);
+            lua_main_string("print('Hello from Lua 5.1 on DragonOS!')\nprint('Memory usage: ' .. collectgarbage('count') .. ' KB')\n");
+        } else {
+            // Check if file exists
+            int fd = open(filepath, 0);
+            if (fd >= 0) {
+                close(fd);
+                char* argv[] = {"lua", (char*)filepath};
+                extern int lua_main(int argc, char** argv);
+                lua_main(2, argv);
+            } else {
+                gui_write_string("lua: cannot open script file: ");
+                gui_write_string(filepath);
+                gui_write_string("\n");
+            }
         }
     } else if (strcmp(cmd, "reboot") == 0) {
         gui_write_string("Rebooting...\n");
