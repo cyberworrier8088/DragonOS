@@ -2,6 +2,8 @@
 #include "../libc/font_segoe.h"
 #include "../libc/string.h"
 #include "../mm/kheap.h"
+#include "serial.h"
+#include "fs/vfs.h"
 
 #define MAX_WIDTH 1280
 #define MAX_HEIGHT 1024
@@ -326,41 +328,54 @@ void draw_desktop_gradient(void) {
     
     // Try to load the raw BMP wallpaper if the resolution matches
     if (screen_width == 1024 && screen_height == 768) {
-        extern int open(const char* filename, int flags);
-        extern int read(int fd, void* buf, int nbytes);
-        extern int close(int fd);
+        vfs_node_t* bmp_node = 0;
+        int count = vfs_get_count();
+        for (int i = 0; i < count; i++) {
+            vfs_node_t* node = vfs_get_node(i);
+            if (node && (strcmp(node->name, "/boot/wallpaper.bmp") == 0 ||
+                         strcmp(node->name, "wallpaper.bmp") == 0 ||
+                         strcmp(node->name, "boot/wallpaper.bmp") == 0)) {
+                bmp_node = node;
+                break;
+            }
+        }
         
-        int fd = open("/boot/wallpaper.bmp", 0);
-        if (fd >= 0) {
-            uint8_t header[54];
-            if (read(fd, header, 54) == 54) {
-                uint8_t* row_data = (uint8_t*)kmalloc(1024 * 3);
-                if (row_data) {
-                    loaded_wallpaper = 1;
-                    for (int y = 767; y >= 0; y--) {
-                        if (read(fd, row_data, 1024 * 3) != 1024 * 3) {
-                            loaded_wallpaper = 0;
-                            break;
-                        }
-                        for (int x = 0; x < 1024; x++) {
-                            uint8_t b = row_data[x * 3];
-                            uint8_t g = row_data[x * 3 + 1];
-                            uint8_t r = row_data[x * 3 + 2];
-                            wallpaper_buffer[y * 1024 + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-                        }
+        if (bmp_node && bmp_node->private_data && bmp_node->size >= 54) {
+            uint8_t* file_data = (uint8_t*)bmp_node->private_data;
+            if (file_data[0] == 'B' && file_data[1] == 'M') {
+                loaded_wallpaper = 1;
+                uint8_t* pixel_data = file_data + 54;
+                for (int y = 767; y >= 0; y--) {
+                    uint8_t* row = pixel_data + (767 - y) * 1024 * 3;
+                    for (int x = 0; x < 1024; x++) {
+                        uint8_t b = row[x * 3];
+                        uint8_t g = row[x * 3 + 1];
+                        uint8_t r = row[x * 3 + 2];
+                        wallpaper_buffer[y * 1024 + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
                     }
-                    kfree(row_data);
                 }
             }
-            close(fd);
         }
     }
 
     if (loaded_wallpaper) {
+        print_serial("[graphics] Wallpaper loaded successfully from VFS!\n");
         wallpaper_rendered = 1;
         memcpy(back_buffer, wallpaper_buffer, screen_width * screen_height * 4);
         return;
     }
+
+    print_serial("[graphics] BMP wallpaper skipped or failed. Drawing fallback gradient.\n");
+    char res_buf[64];
+    char num_buf[16];
+    strcpy(res_buf, "Resolution: ");
+    int_to_ascii(screen_width, num_buf);
+    strcat(res_buf, num_buf);
+    strcat(res_buf, "x");
+    int_to_ascii(screen_height, num_buf);
+    strcat(res_buf, num_buf);
+    strcat(res_buf, "\n");
+    print_serial(res_buf);
 
     /* Windows 11 "Bloom" wallpaper: dark navy edges, centered bright blue bloom */
     int cx = (int)screen_width / 2;
