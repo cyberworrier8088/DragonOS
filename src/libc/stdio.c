@@ -66,31 +66,55 @@ long ftell(FILE* stream) {
     return lseek(fd, 0, SEEK_CUR);
 }
 
+static void long_to_ascii(long n, char str[]) {
+    int i;
+    long sign;
+    if ((sign = n) < 0) {
+        n = -n;
+    }
+    i = 0;
+    do {
+        str[i++] = n % 10 + '0';
+    } while ((n /= 10) > 0);
+
+    if (sign < 0) {
+        str[i++] = '-';
+    }
+    str[i] = '\0';
+
+    int len = i;
+    for (int a = 0, b = len - 1; a < b; a++, b--) {
+        char temp = str[a];
+        str[a] = str[b];
+        str[b] = temp;
+    }
+}
+
 // Simple vsprintf implementation supporting %d, %s, %c, %x, %u
 int vsprintf(char* str, const char* format, va_list ap) {
     char* d = str;
     const char* f = format;
-    
+
     while (*f) {
         if (*f == '%') {
             f++;
-            
+
             int zero_pad = 0;
             int width = 0;
             int precision = -1;
-            
+
             // Check for zero padding flag
             if (*f == '0') {
                 zero_pad = 1;
                 f++;
             }
-            
+
             // Parse width
             while (*f >= '0' && *f <= '9') {
                 width = width * 10 + (*f - '0');
                 f++;
             }
-            
+
             // Parse precision
             if (*f == '.') {
                 f++;
@@ -100,13 +124,19 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     f++;
                 }
             }
-            
+
+            int is_long = 0;
+            if (*f == 'l') {
+                is_long = 1;
+                f++;
+            }
+
             // Format type
             if (*f == 'd' || *f == 'i') {
-                int val = va_arg(ap, int);
-                char num[32];
-                int_to_ascii(val, num);
-                
+                long val = is_long ? va_arg(ap, long) : va_arg(ap, int);
+                char num[64];
+                long_to_ascii(val, num);
+
                 int len = strlen(num);
                 int neg = 0;
                 char* p = num;
@@ -115,45 +145,60 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     p++;
                     len--;
                 }
-                
+
                 // Determine padding target size
                 int target = len;
                 if (precision > target) target = precision;
                 if (width > target + neg && zero_pad) target = width - neg;
-                
+
                 // Write negative sign if applicable
                 if (neg) {
                     *d++ = '-';
                 }
-                
+
                 // Write leading zeros
                 for (int i = len; i < target; i++) {
                     *d++ = '0';
                 }
-                
+
                 // Write actual digits
                 strcpy(d, p);
                 d += len;
-                
+
             } else if (*f == 'u') {
-                unsigned int val = va_arg(ap, unsigned int);
-                char num[32];
-                int_to_ascii((int)val, num); // simple wrap
-                
-                int len = strlen(num);
+                unsigned long val = is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
+                char num[64];
+                int idx = 0;
+                if (val == 0) {
+                    num[idx++] = '0';
+                } else {
+                    while (val > 0) {
+                        num[idx++] = (val % 10) + '0';
+                        val /= 10;
+                    }
+                }
+                num[idx] = '\0';
+                // reverse
+                for (int a = 0, b = idx - 1; a < b; a++, b--) {
+                    char temp = num[a];
+                    num[a] = num[b];
+                    num[b] = temp;
+                }
+
+                int len = idx;
                 int target = len;
                 if (precision > target) target = precision;
                 if (width > target && zero_pad) target = width;
-                
+
                 for (int i = len; i < target; i++) {
                     *d++ = '0';
                 }
                 strcpy(d, num);
                 d += len;
-                
+
             } else if (*f == 'x') {
-                unsigned int val = va_arg(ap, unsigned int);
-                char hex[32];
+                unsigned long val = is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
+                char hex[64];
                 int idx = 0;
                 if (val == 0) {
                     hex[idx++] = '0';
@@ -171,12 +216,12 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     hex[i] = hex[j];
                     hex[j] = temp;
                 }
-                
+
                 int len = idx;
                 int target = len;
                 if (precision > target) target = precision;
                 if (width > target && zero_pad) target = width;
-                
+
                 for (int i = len; i < target; i++) {
                     *d++ = '0';
                 }

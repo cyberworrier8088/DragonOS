@@ -6228,6 +6228,16 @@ lua_State*L=lua_newstate(l_alloc,NULL);
 if(L)lua_atpanic(L,&panic);
 return L;
 }
+static int luaB_collectgarbage(lua_State* L) {
+    const char* opt = luaL_optstring(L, 1, "collect");
+    if (strcmp(opt, "count") == 0) {
+        // G(L)->totalbytes is a size_t, divide by 1024 to get KB
+        lua_pushnumber(L, (lua_Number)(L->l_G->totalbytes / 1024));
+        return 1;
+    }
+    return 0;
+}
+
 static int luaB_print(lua_State* L) {
     int n = lua_gettop(L);
     int i;
@@ -6460,6 +6470,7 @@ return 1;
 }
 static const luaL_Reg base_funcs[]={
 {"assert",luaB_assert},
+{"collectgarbage",luaB_collectgarbage},
 {"error",luaB_error},
 {"loadfile",luaB_loadfile},
 {"loadstring",luaB_loadstring},

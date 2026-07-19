@@ -187,16 +187,31 @@ const uint16_t** __ctype_b_loc(void) {
             int val = i - 128;
             uint16_t mask = 0;
             if (val == ' ' || val == '\t' || val == '\n' || val == '\r' || val == '\v' || val == '\f') {
-                mask |= 0x2000;
-            }
-            if (val >= '0' && val <= '9') {
-                mask |= 0x0800;
+                mask |= 0x2000; // _ISspace
             }
             if (val >= 'a' && val <= 'z') {
-                mask |= 0x0200;
+                mask |= 0x0200; // _ISlower
+                mask |= 0x0400; // _ISalpha
+                mask |= 0x0008; // _ISalnum
             }
             if (val >= 'A' && val <= 'Z') {
-                mask |= 0x0100;
+                mask |= 0x0100; // _ISupper
+                mask |= 0x0400; // _ISalpha
+                mask |= 0x0008; // _ISalnum
+            }
+            if (val >= '0' && val <= '9') {
+                mask |= 0x0800; // _ISdigit
+                mask |= 0x0008; // _ISalnum
+                mask |= 0x1000; // _ISxdigit
+            }
+            if ((val >= 'a' && val <= 'f') || (val >= 'A' && val <= 'F')) {
+                mask |= 0x1000; // _ISxdigit
+            }
+            if (val == ' ' || val == '\t') {
+                mask |= 0x0001; // _ISblank
+            }
+            if ((val >= 0 && val < 32) || val == 127) {
+                mask |= 0x0002; // _IScntrl
             }
             ctype_b_table_data[i] = mask;
         }
