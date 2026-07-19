@@ -64,7 +64,7 @@ void kernel_main(void) {
 
     /* Initialize Window Manager GUI */
     init_gui();
-    print_serial("[DragonOS] Aero GUI Desktop initialized.\n");
+    print_serial("[DragonOS] Windows 11 Fluent Design Desktop initialized.\n");
 
     /* Enable hardware CPU interrupts */
     __asm__ volatile("sti");

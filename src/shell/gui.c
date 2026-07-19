@@ -4,7 +4,6 @@
 #include "../drivers/serial.h"
 #include "../cpu/ports.h"
 #include "../libc/string.h"
-#include "../libc/font.h"
 #include "shell.h"
 
 gui_window_t windows[MAX_WINDOWS];
@@ -19,6 +18,7 @@ static int hours = 12;
 static int minutes = 0;
 static int seconds = 0;
 static char time_str[12] = "12:00 PM";
+static char date_str[16] = "Jul 19";
 
 /* Terminal Window Output Buffer */
 static char term_lines[18][80];
@@ -37,29 +37,55 @@ static int calc_new_number = 1;
 static int sysmon_values[60];
 static int val_timer = 0;
 
-/* High-Fidelity 12x20 Windows 7 Mouse Pointer Bitmap */
-static const char mouse_cursor_bitmap[20][12] = {
-    "X           ",
-    "XX          ",
-    "X.X         ",
-    "X..X        ",
-    "X...X       ",
-    "X....X      ",
-    "X.....X     ",
-    "X......X    ",
-    "X.......X   ",
-    "X........X  ",
-    "X.........X ",
-    "X....XXXXXX ",
-    "X..X.X      ",
-    "X.X  X.X    ",
-    "XX    X.X   ",
-    "X      X.X  ",
-    "        XX  ",
-    "            ",
-    "            ",
-    "            "
+/* ============================================================
+ * Windows 11 Style Mouse Cursor (16x22)
+ * X = black outline, . = white fill, S = shadow (gray)
+ * ============================================================ */
+static const char cursor_bitmap[22][16] = {
+    "X               ",
+    "XX              ",
+    "X.X             ",
+    "X..X            ",
+    "X...X           ",
+    "X....X          ",
+    "X.....X         ",
+    "X......X        ",
+    "X.......X       ",
+    "X........X      ",
+    "X.........X     ",
+    "X..........X    ",
+    "X.......XXXX    ",
+    "X...X...X       ",
+    "X..X X...X      ",
+    "X.X   X...X     ",
+    "XX     X...X    ",
+    "X       X..X    ",
+    "         X.X    ",
+    "          XX    ",
+    "                ",
+    "                "
 };
+
+/* ============================================================
+ * Windows 11 Color Palette
+ * ============================================================ */
+#define WIN11_ACCENT         0x0078D4  /* Windows 11 blue accent */
+#define WIN11_ACCENT_LIGHT   0x429CE3
+#define WIN11_ACCENT_DARK    0x005A9E
+#define WIN11_TITLEBAR       0xF3F3F3  /* Light mica-style titlebar */
+#define WIN11_TITLEBAR_INACTIVE 0xFBFBFB
+#define WIN11_WINDOW_BG      0xFAFAFA  /* Window content background */
+#define WIN11_BORDER         0xE0E0E0  /* Subtle window border */
+#define WIN11_TEXT_PRIMARY    0x1A1A1A  /* Primary text */
+#define WIN11_TEXT_SECONDARY  0x6B6B6B  /* Secondary/muted text */
+#define WIN11_CLOSE_HOVER    0xC42B1C  /* Close button red */
+#define WIN11_TASKBAR_BG     0x1C1C1C  /* Dark taskbar */
+#define WIN11_CARD_BG        0xFFFFFF  /* Card surface */
+#define WIN11_CARD_BORDER    0xEBEBEB
+#define WIN11_SURFACE_DARK   0x2D2D2D  /* Dark surfaces (terminal, etc) */
+#define WIN11_TERMINAL_BG    0x0C0C0C  /* Terminal black */
+#define WIN11_GREEN          0x0F7B0F  /* Status green */
+#define WIN11_SEARCH_BG      0xF5F5F5  /* Search bar background */
 
 /* Custom print helper for Terminal GUI Window */
 void gui_write_char(char c) {
@@ -97,26 +123,26 @@ void gui_write_string(const char* str) {
 static void gui_execute_command(const char* cmd) {
     if (strcmp(cmd, "help") == 0) {
         gui_write_string("Available commands:\n");
-        gui_write_string("  help        - Show this help menu\n");
-        gui_write_string("  about       - Display OS information\n");
-        gui_write_string("  clear       - Clear the screen\n");
-        gui_write_string("  ticks       - Show system timer ticks elapsed\n");
-        gui_write_string("  ping        - Test command response\n");
-        gui_write_string("  echo <msg>  - Echo input text back\n");
-        gui_write_string("  reboot      - Reboot the computer\n");
-        gui_write_string("  halt        - Halt the CPU safely\n");
+        gui_write_string("  help        Show this help menu\n");
+        gui_write_string("  about       Display OS information\n");
+        gui_write_string("  clear       Clear the screen\n");
+        gui_write_string("  ticks       Show system timer ticks\n");
+        gui_write_string("  ping        Test command response\n");
+        gui_write_string("  echo <msg>  Echo input text back\n");
+        gui_write_string("  reboot      Reboot the computer\n");
+        gui_write_string("  halt        Halt the CPU safely\n");
     } else if (strcmp(cmd, "about") == 0) {
         gui_write_string("DragonOS x86_64 Kernel\n");
         gui_write_string("Build: July 2026\n");
-        gui_write_string("Bootloader: Native Limine Graphical Mode\n");
-        gui_write_string("Design: Monolithic 64-bit Aero GUI\n");
+        gui_write_string("Bootloader: Limine Protocol\n");
+        gui_write_string("GUI: Windows 11 Fluent Design\n");
     } else if (strcmp(cmd, "clear") == 0) {
         memset(term_lines, 0, sizeof(term_lines));
         term_line_count = 0;
     } else if (strcmp(cmd, "ticks") == 0) {
         char tick_str[32];
         int_to_ascii(ticks_counter, tick_str);
-        gui_write_string("Ticks elapsed: ");
+        gui_write_string("Ticks: ");
         gui_write_string(tick_str);
         gui_write_string("\n");
     } else if (strcmp(cmd, "ping") == 0) {
@@ -131,30 +157,29 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string("System halted.\n");
         __asm__ volatile("cli; hlt");
     } else if (strlen(cmd) > 0) {
-        gui_write_string("Unknown command. Type 'help' for commands.\n");
+        gui_write_string("Unknown command. Type 'help'.\n");
     }
 }
 
 void init_gui(void) {
-    /* Initialize windows */
-    // 0: Computer
-    windows[0].x = 50;
-    windows[0].y = 50;
-    windows[0].w = 260;
-    windows[0].h = 160;
-    strcpy(windows[0].title, "Computer Information");
+    /* 0: Computer */
+    windows[0].x = 80;
+    windows[0].y = 60;
+    windows[0].w = 320;
+    windows[0].h = 200;
+    strcpy(windows[0].title, "System Information");
     windows[0].active = 0;
     windows[0].closed = 0;
     windows[0].minimized = 0;
     windows[0].dragging = 0;
     windows[0].id = 0;
 
-    // 1: Terminal
+    /* 1: Terminal */
     windows[1].x = 350;
     windows[1].y = 80;
-    windows[1].w = 400;
-    windows[1].h = 320;
-    strcpy(windows[1].title, "Command Terminal");
+    windows[1].w = 440;
+    windows[1].h = 340;
+    strcpy(windows[1].title, "Terminal");
     windows[1].active = 1;
     windows[1].closed = 0;
     windows[1].minimized = 0;
@@ -162,11 +187,11 @@ void init_gui(void) {
     windows[1].id = 1;
     active_win_id = 1;
 
-    // 2: Calculator
-    windows[2].x = 100;
-    windows[2].y = 250;
-    windows[2].w = 180;
-    windows[2].h = 220;
+    /* 2: Calculator */
+    windows[2].x = 120;
+    windows[2].y = 220;
+    windows[2].w = 220;
+    windows[2].h = 280;
     strcpy(windows[2].title, "Calculator");
     windows[2].active = 0;
     windows[2].closed = 0;
@@ -174,12 +199,12 @@ void init_gui(void) {
     windows[2].dragging = 0;
     windows[2].id = 2;
 
-    // 3: System Monitor
-    windows[3].x = 400;
+    /* 3: System Monitor */
+    windows[3].x = 420;
     windows[3].y = 280;
-    windows[3].w = 320;
-    windows[3].h = 180;
-    strcpy(windows[3].title, "System Monitor");
+    windows[3].w = 360;
+    windows[3].h = 220;
+    strcpy(windows[3].title, "Task Manager");
     windows[3].active = 0;
     windows[3].closed = 0;
     windows[3].minimized = 0;
@@ -188,59 +213,286 @@ void init_gui(void) {
 
     /* Initialize terminal buffer */
     memset(term_lines, 0, sizeof(term_lines));
-    strcpy(term_lines[0], "DragonOS Interactive Terminal");
-    strcpy(term_lines[1], "Type 'help' to see list of commands.");
+    strcpy(term_lines[0], "DragonOS Terminal v2.0");
+    strcpy(term_lines[1], "Type 'help' for commands.");
     strcpy(term_lines[2], "");
     term_line_count = 3;
 
     /* Initialize system monitor points */
     for (int i = 0; i < 60; i++) {
-        sysmon_values[i] = 100; // bottom of grid
+        sysmon_values[i] = 100;
     }
 
     strcpy(calc_buf, "0");
 }
 
-/* Helper to render Start Orb Flag Logo */
-static void draw_start_logo(int cx, int cy) {
-    draw_rect(cx - 5, cy - 5, 4, 4, 0xFF4B4B); // Red
-    draw_rect(cx + 1, cy - 5, 4, 4, 0x4BFF4B); // Green
-    draw_rect(cx - 5, cy + 1, 4, 4, 0x4B4BFF); // Blue
-    draw_rect(cx + 1, cy + 1, 4, 4, 0xFFFF4B); // Yellow
+/* ============================================================
+ * Draw Windows 11 Start Logo (4-pane grid)
+ * ============================================================ */
+static void draw_win11_logo(int cx, int cy, uint32_t color) {
+    int s = 4; /* square size */
+    int g = 2; /* gap */
+    draw_rect(cx - s - g/2, cy - s - g/2, s, s, color);
+    draw_rect(cx + g/2,     cy - s - g/2, s, s, color);
+    draw_rect(cx - s - g/2, cy + g/2,     s, s, color);
+    draw_rect(cx + g/2,     cy + g/2,     s, s, color);
 }
 
-/* Redraw GUI state on the back buffer */
+/* ============================================================
+ * Draw a Windows 11 style window
+ * ============================================================ */
+static void draw_window_chrome(gui_window_t* win) {
+    int x = win->x, y = win->y, w = win->w, h = win->h;
+    int is_active = (active_win_id == win->id);
+    int titlebar_h = 32;
+    int radius = 8;
+
+    /* Drop shadow */
+    draw_rounded_rect_translucent(x + 2, y + 2, w, h, radius, 0x000000, 30);
+    draw_rounded_rect_translucent(x + 1, y + 1, w, h, radius, 0x000000, 15);
+
+    /* Window body with rounded corners */
+    draw_rounded_rect(x, y, w, h, radius, WIN11_WINDOW_BG);
+
+    /* Titlebar */
+    uint32_t tb_color = is_active ? WIN11_TITLEBAR : WIN11_TITLEBAR_INACTIVE;
+    draw_rounded_rect(x, y, w, titlebar_h, radius, tb_color);
+    /* Fill in the bottom of titlebar (flat, no bottom rounding) */
+    draw_rect(x, y + radius, w, titlebar_h - radius, tb_color);
+
+    /* Border */
+    uint32_t border_c = is_active ? 0xCCCCCC : WIN11_BORDER;
+    draw_rounded_rect_outline(x, y, w, h, radius, border_c);
+
+    /* Title text */
+    uint32_t title_c = is_active ? WIN11_TEXT_PRIMARY : WIN11_TEXT_SECONDARY;
+    draw_string(x + 12, y + 8, win->title, title_c);
+
+    /* Window control buttons (right side of titlebar) */
+    int btn_w = 46;
+    int btn_h = 28;
+    int btn_y = y + 2;
+
+    /* Close button */
+    int close_x = x + w - btn_w;
+    /* Draw close button background only as rounded top-right */
+    draw_rect(close_x, btn_y, btn_w - radius, btn_h, WIN11_CLOSE_HOVER);
+    draw_rounded_rect(close_x, btn_y, btn_w, btn_h, radius, WIN11_CLOSE_HOVER);
+    /* X symbol */
+    int cx = close_x + btn_w / 2;
+    int cy = btn_y + btn_h / 2;
+    for (int d = -4; d <= 4; d++) {
+        draw_pixel(cx + d, cy + d, 0xFFFFFF);
+        draw_pixel(cx + d, cy - d, 0xFFFFFF);
+    }
+
+    /* Maximize button */
+    int max_x = close_x - btn_w;
+    draw_rect(max_x, btn_y, btn_w, btn_h, tb_color);
+    draw_rect_outline(max_x + btn_w/2 - 5, btn_y + btn_h/2 - 4, 10, 8, WIN11_TEXT_SECONDARY);
+
+    /* Minimize button */
+    int min_x = max_x - btn_w;
+    draw_rect(min_x, btn_y, btn_w, btn_h, tb_color);
+    draw_hline(min_x + btn_w/2 - 5, btn_y + btn_h/2, 10, WIN11_TEXT_SECONDARY);
+}
+
+/* ============================================================
+ * Draw Desktop Icons (Windows 11 flat style)
+ * ============================================================ */
+static void draw_desktop_icons(void) {
+    /* Icon layout: vertical stack on left side */
+    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[4] = {
+        {"System",   0x0078D4, 0xFFFFFF, "PC"},
+        {"Terminal", 0x0C0C0C, 0x00FF00, ">_"},
+        {"Calc",     0x202020, 0xFFFFFF, "+-"},
+        {"Monitor",  0x1A1A1A, 0x00CC6A, "/\\"},
+    };
+
+    for (int i = 0; i < 4; i++) {
+        int ix = 30;
+        int iy = 30 + i * 90;
+
+        /* Icon tile background - rounded square */
+        draw_rounded_rect(ix, iy, 48, 48, 8, icons[i].bg);
+        /* Icon symbol */
+        draw_string(ix + 10, iy + 16, icons[i].symbol, icons[i].fg);
+        /* Label below icon */
+        draw_string(ix - 2, iy + 54, icons[i].label, 0xFFFFFF);
+    }
+}
+
+/* ============================================================
+ * Draw Window Content
+ * ============================================================ */
+static void draw_window_content(gui_window_t* win) {
+    int x = win->x, y = win->y, w = win->w, h = win->h;
+    int content_y = y + 32;
+    int content_h = h - 32;
+
+    if (win->id == 0) {
+        /* ---- System Information ---- */
+        /* Info cards on light background */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, WIN11_WINDOW_BG);
+
+        /* CPU card */
+        draw_rounded_rect(x + 12, content_y + 12, w - 24, 36, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 12, w - 24, 36, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 14, "CPU", WIN11_ACCENT);
+        draw_string(x + 22, content_y + 30, "64-Bit Intel Emulator", WIN11_TEXT_PRIMARY);
+
+        /* RAM card */
+        draw_rounded_rect(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 58, "Memory", WIN11_ACCENT);
+        draw_string(x + 22, content_y + 74, "4096 MB Physical", WIN11_TEXT_PRIMARY);
+
+        /* OS card */
+        draw_rounded_rect(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 102, "System", WIN11_ACCENT);
+        draw_string(x + 22, content_y + 118, "DragonOS 64-bit Limine", WIN11_TEXT_PRIMARY);
+    }
+    else if (win->id == 1) {
+        /* ---- Terminal ---- */
+        int pad = 4;
+        draw_rounded_rect(x + pad, content_y + pad, w - pad * 2, content_h - pad * 2 - 2, 4, WIN11_TERMINAL_BG);
+
+        /* Terminal text output */
+        for (int line = 0; line <= term_line_count; line++) {
+            draw_string(x + pad + 8, content_y + pad + 6 + line * FONT_HEIGHT, term_lines[line], 0xCCCCCC);
+        }
+        /* Prompt line */
+        char prompt_line[160];
+        strcpy(prompt_line, "$ ");
+        strcat(prompt_line, command_buffer);
+        draw_string(x + pad + 8, content_y + pad + 6 + term_line_count * FONT_HEIGHT, prompt_line, 0x00CC6A);
+
+        /* Blinking cursor */
+        if ((ticks_counter / 30) % 2 == 0) {
+            int text_len = strlen(prompt_line);
+            int cursor_x = x + pad + 8 + text_len * FONT_WIDTH;
+            int cursor_y = content_y + pad + 6 + term_line_count * FONT_HEIGHT;
+            draw_rect(cursor_x, cursor_y, 2, FONT_HEIGHT - 2, 0x00CC6A);
+        }
+    }
+    else if (win->id == 2) {
+        /* ---- Calculator (Windows 11 style) ---- */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x202020);
+
+        /* Display area */
+        draw_string(x + w - (strlen(calc_buf) + 1) * FONT_WIDTH, content_y + 10, calc_buf, 0xFFFFFF);
+
+        /* Separator */
+        draw_hline(x + 10, content_y + 36, w - 20, 0x3D3D3D);
+
+        /* Button grid */
+        char* layout[4][4] = {
+            {"7", "8", "9", "/"},
+            {"4", "5", "6", "*"},
+            {"1", "2", "3", "-"},
+            {"0", "C", "=", "+"}
+        };
+
+        int pad = 6;
+        int btn_gap = 4;
+        int usable_w = w - pad * 2;
+        int btn_w = (usable_w - btn_gap * 3) / 4;
+        int btn_h = 36;
+        int grid_y = content_y + 44;
+
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                int bx = x + pad + c * (btn_w + btn_gap);
+                int by = grid_y + r * (btn_h + btn_gap);
+                char key = layout[r][c][0];
+
+                uint32_t btn_bg;
+                uint32_t btn_fg;
+                if (key == '=') {
+                    btn_bg = WIN11_ACCENT;
+                    btn_fg = 0xFFFFFF;
+                } else if (key >= '0' && key <= '9') {
+                    btn_bg = 0x3B3B3B;
+                    btn_fg = 0xFFFFFF;
+                } else {
+                    btn_bg = 0x323232;
+                    btn_fg = 0xCCCCCC;
+                }
+
+                draw_rounded_rect(bx, by, btn_w, btn_h, 4, btn_bg);
+                draw_char(bx + btn_w / 2 - FONT_WIDTH / 2, by + btn_h / 2 - FONT_HEIGHT / 2 + 1, key, btn_fg);
+            }
+        }
+    }
+    else if (win->id == 3) {
+        /* ---- Task Manager / System Monitor ---- */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x1A1A1A);
+
+        draw_string(x + 12, content_y + 8, "CPU Performance", 0x00CC6A);
+
+        /* Graph area */
+        int gx = x + 12;
+        int gy = content_y + 30;
+        int gw = w - 24;
+        int gh = content_h - 50;
+
+        draw_rounded_rect(gx, gy, gw, gh, 4, 0x111111);
+        draw_rounded_rect_outline(gx, gy, gw, gh, 4, 0x333333);
+
+        /* Grid lines */
+        for (int gridx = 20; gridx < gw; gridx += 20) {
+            for (int gridy = 10; gridy < gh; gridy += 10) {
+                draw_pixel(gx + gridx, gy + gridy, 0x1A3A1A);
+            }
+        }
+
+        /* Graph line with gradient fill */
+        int prev_ly = -1;
+        for (int gi = 0; gi < 60; gi++) {
+            int val = sysmon_values[gi];
+            int lx = gx + 5 + gi * (gw - 10) / 60;
+            int ly = gy + gh - 8 - (val * (gh - 16) / 100);
+
+            if (ly < gy + 4) ly = gy + 4;
+            if (ly >= gy + gh - 4) ly = gy + gh - 5;
+
+            /* Fill area under graph with translucent green */
+            for (int fill_y = ly; fill_y < gy + gh - 4; fill_y++) {
+                int dist = fill_y - ly;
+                uint8_t alpha = (dist < 40) ? (uint8_t)(60 - dist) : 20;
+                draw_pixel_alpha(lx, fill_y, 0x00CC6A, alpha);
+            }
+
+            /* Line connecting points */
+            if (prev_ly != -1) {
+                int prev_lx = gx + 5 + (gi - 1) * (gw - 10) / 60;
+                draw_line(prev_lx, prev_ly, lx, ly, 0x00CC6A);
+            }
+
+            draw_pixel(lx, ly, 0x00FF7F);
+            prev_ly = ly;
+        }
+
+        /* Current value label */
+        char val_str[8];
+        int_to_ascii(sysmon_values[59], val_str);
+        strcat(val_str, "%");
+        draw_string(gx + gw - 50, gy + 4, val_str, 0x00CC6A);
+    }
+}
+
+/* ============================================================
+ * Main GUI Draw
+ * ============================================================ */
 void gui_draw(void) {
-    // 1. Draw Windows 7 gradient background with Aero light streams
+    /* 1. Desktop wallpaper (Windows 11 bloom) */
     draw_desktop_gradient();
 
-    // 2. Draw Desktop Icons
-    // Icon 0: Computer
-    draw_rect(20, 20, 32, 24, 0xCCCCCC); // Screen
-    draw_rect(32, 44, 8, 4, 0x888888);   // Stand
-    draw_rect(24, 48, 24, 2, 0x666666);  // Base
-    draw_string(14, 54, "Computer", 0xFFFFFF);
+    /* 2. Desktop icons */
+    draw_desktop_icons();
 
-    // Icon 1: Terminal
-    draw_rect(20, 100, 32, 28, 0x111111); // Box
-    draw_rect_outline(20, 100, 32, 28, 0x888888);
-    draw_string(24, 106, ">_", 0x00FF00);
-    draw_string(14, 132, "Terminal", 0xFFFFFF);
-
-    // Icon 2: Calculator
-    draw_rect(20, 180, 32, 28, 0x4A6FA5);
-    draw_rect_outline(20, 180, 32, 28, 0xFFFFFF);
-    draw_string(24, 186, "+-", 0xFFFFFF);
-    draw_string(24, 196, "x=", 0xFFFFFF);
-    draw_string(14, 212, "Calc", 0xFFFFFF);
-
-    // Icon 3: System Monitor
-    draw_rect(20, 260, 32, 28, 0x1E1E1E);
-    draw_rect_outline(20, 260, 32, 28, 0x00AA00);
-    draw_rect(24, 274, 24, 2, 0x00FF00); // simulated graph line
-    draw_string(14, 292, "SysMon", 0xFFFFFF);
-
-    // 3. Draw Windows from bottom to top (focused window drawn last)
+    /* 3. Draw windows from bottom to top (focused last) */
     for (int priority = 0; priority < MAX_WINDOWS; priority++) {
         int i = priority;
         if (active_win_id >= 0 && active_win_id < MAX_WINDOWS) {
@@ -255,251 +507,139 @@ void gui_draw(void) {
         gui_window_t* win = &windows[i];
         if (win->closed || win->minimized) continue;
 
-        // Draw Aero window translucent shadow border
-        draw_rect_translucent(win->x - 4, win->y - 4, win->w + 8, win->h + 8, 0x228BE6, 40);
-
-        // Title bar with rounded top corners
-        uint32_t title_color = (active_win_id == win->id) ? 0x1C7ED6 : 0x74C0FC;
-        draw_rect_translucent(win->x + 2, win->y, win->w - 4, 1, title_color, 200);
-        draw_rect_translucent(win->x + 1, win->y + 1, win->w - 2, 1, title_color, 200);
-        draw_rect_translucent(win->x, win->y + 2, win->w, 22, title_color, 200);
-        draw_rect_outline(win->x, win->y, win->w, win->h, 0x1971C2);
-
-        // Specular gloss reflection line
-        draw_rect_translucent(win->x + 1, win->y + 2, win->w - 2, 8, 0xFFFFFF, 50);
-
-        // Window Title text
-        draw_string(win->x + 8, win->y + 5, win->title, 0xFFFFFF);
-
-        // Buttons: Minimize, Maximize, Close
-        int bx_close = win->x + win->w - 18;
-        int bx_max   = win->x + win->w - 34;
-        int bx_min   = win->x + win->w - 50;
-
-        // Minimize
-        draw_rect(bx_min, win->y + 4, 12, 12, 0x4DABF7);
-        draw_rect_outline(bx_min, win->y + 4, 12, 12, 0x1971C2);
-        draw_rect(bx_min + 3, win->y + 10, 6, 2, 0xFFFFFF);
-
-        // Maximize
-        draw_rect(bx_max, win->y + 4, 12, 12, 0x4DABF7);
-        draw_rect_outline(bx_max, win->y + 4, 12, 12, 0x1971C2);
-        draw_rect_outline(bx_max + 3, win->y + 7, 6, 6, 0xFFFFFF);
-
-        // Close (Red Box)
-        draw_rect(bx_close, win->y + 4, 12, 12, 0xFA5252);
-        draw_rect_outline(bx_close, win->y + 4, 12, 12, 0xC92A2A);
-        draw_char(bx_close + 3, win->y + 2, 'x', 0xFFFFFF);
-
-        // Window content background
-        draw_rect(win->x + 1, win->y + 24, win->w - 2, win->h - 25, 0xFFFFFF);
-
-        // Draw specific window contents
-        if (win->id == 0) {
-            // Computer Info
-            draw_string(win->x + 10, win->y + 35, "DragonOS x86_64 Kernel", 0x1971C2);
-            draw_string(win->x + 10, win->y + 55, "=====================", 0xADB5BD);
-            draw_string(win->x + 10, win->y + 75, "CPU: 64-Bit Intel Core Emulator", 0x212529);
-            draw_string(win->x + 10, win->y + 91, "RAM: 4096 MB Physical", 0x212529);
-            draw_string(win->x + 10, win->y + 107, "Mode: 64-Bit Protected Long Mode", 0x212529);
-            draw_string(win->x + 10, win->y + 123, "Boot: Native Limine Bootloader", 0x212529);
-        }
-        else if (win->id == 1) {
-            // Command Terminal
-            draw_rect(win->x + 4, win->y + 28, win->w - 8, win->h - 32, 0x111111);
-            for (int line = 0; line <= term_line_count; line++) {
-                draw_string(win->x + 8, win->y + 32 + line * 14, term_lines[line], 0x00FF00);
-            }
-            // Draw prompt and input line
-            char prompt_line[160];
-            strcpy(prompt_line, "dragonos> ");
-            strcat(prompt_line, command_buffer);
-            draw_string(win->x + 8, win->y + 32 + term_line_count * 14, prompt_line, 0xFFFFFF);
-
-            // Draw flashing console underline cursor
-            if ((ticks_counter / 25) % 2 == 0) {
-                int text_len = strlen(prompt_line);
-                int cursor_x = win->x + 8 + text_len * 8;
-                int cursor_y = win->y + 32 + term_line_count * 14;
-                draw_rect(cursor_x, cursor_y + 12, 8, 2, 0xFFFFFF);
-            }
-        }
-        else if (win->id == 2) {
-            // Calculator
-            draw_rect(win->x + 1, win->y + 24, win->w - 2, win->h - 25, 0xF1F3F5); // Silver background
-            
-            // Display box
-            draw_rect(win->x + 10, win->y + 30, win->w - 20, 22, 0xFFFFFF);
-            draw_rect_outline(win->x + 10, win->y + 30, win->w - 20, 22, 0xADB5BD);
-            draw_string(win->x + 15, win->y + 34, calc_buf, 0x212529);
-
-            char* layout[4][4] = {
-                {"7", "8", "9", "/"},
-                {"4", "5", "6", "*"},
-                {"1", "2", "3", "-"},
-                {"0", "C", "=", "+"}
-            };
-
-            int start_bx = win->x + 12;
-            int start_by = win->y + 60;
-            for (int r = 0; r < 4; r++) {
-                for (int c = 0; c < 4; c++) {
-                    int bx = start_bx + c * 40;
-                    int by = start_by + r * 35;
-                    draw_rect(bx, by, 34, 28, 0xFFFFFF);
-                    draw_rect_outline(bx, by, 34, 28, 0xCED4DA);
-                    draw_char(bx + 13, by + 6, layout[r][c][0], 0x1C7ED6); // Aero blue text
-                }
-            }
-        }
-        else if (win->id == 3) {
-            // System Monitor
-            draw_string(win->x + 10, win->y + 30, "CPU Usage History", 0x12B886);
-            int grid_x = win->x + 10;
-            int grid_y = win->y + 50;
-            int grid_w = win->w - 20;
-            int grid_h = win->h - 60;
-            draw_rect(grid_x, grid_y, grid_w, grid_h, 0x111111);
-            draw_rect_outline(grid_x, grid_y, grid_w, grid_h, 0x12B886);
-
-            for (int gx = 20; gx < grid_w; gx += 20) {
-                for (int gy = 10; gy < grid_h; gy += 10) {
-                    draw_pixel(grid_x + gx, grid_y + gy, 0x002E00);
-                }
-            }
-
-            int last_gy = -1;
-            for (int gi = 0; gi < 60; gi++) {
-                int val = sysmon_values[gi];
-                int lx = grid_x + 5 + gi * 5;
-                int ly = grid_y + grid_h - 10 - (val * (grid_h - 20) / 100);
-
-                if (ly < grid_y) ly = grid_y;
-                if (ly >= grid_y + grid_h) ly = grid_y + grid_h - 1;
-
-                if (last_gy != -1) {
-                    int prev_lx = lx - 5;
-                    if (ly == last_gy) {
-                        for (int x_fill = prev_lx; x_fill <= lx; x_fill++) {
-                            draw_pixel(x_fill, ly, 0x38D9A9);
-                        }
-                    } else {
-                        int min_y = (ly < last_gy) ? ly : last_gy;
-                        int max_y = (ly > last_gy) ? ly : last_gy;
-                        for (int y_fill = min_y; y_fill <= max_y; y_fill++) {
-                            draw_pixel(lx, y_fill, 0x38D9A9);
-                        }
-                    }
-                }
-                draw_pixel(lx, ly, 0x12B886);
-                last_gy = ly;
-            }
-        }
+        draw_window_chrome(win);
+        draw_window_content(win);
     }
 
-    // 4. Draw Start Menu (pop-up over desktop/windows if open)
-    int smy = (int)screen_height - 400;
+    /* 4. Start Menu (Windows 11 floating panel) */
     if (start_menu_open) {
-        draw_rect_translucent(6, smy - 4, 288, 368, 0x1971C2, 60);
+        int sm_w = 340;
+        int sm_h = 360;
+        int sm_x = ((int)screen_width - sm_w) / 2;
+        int sm_y = (int)screen_height - 48 - sm_h - 12;
 
-        // Glass blue frame
-        draw_rect_translucent(10, smy, 280, 360, 0x1A365D, 220);
-        draw_rect_outline(10, smy, 280, 360, 0x1971C2);
+        /* Shadow */
+        draw_rounded_rect_translucent(sm_x + 3, sm_y + 3, sm_w, sm_h, 12, 0x000000, 40);
 
-        // Left Pane (White Apps Panel)
-        draw_rect(16, smy + 6, 150, 348, 0xFFFFFF);
+        /* Panel background */
+        draw_rounded_rect(sm_x, sm_y, sm_w, sm_h, 12, 0x2D2D2D);
+        draw_rounded_rect_outline(sm_x, sm_y, sm_w, sm_h, 12, 0x3D3D3D);
 
-        // Apps list
-        draw_string(24, smy + 20, "Computer Info", 0x212529);
-        draw_string(24, smy + 50, "Command Term", 0x212529);
-        draw_string(24, smy + 80, "Calculator", 0x212529);
-        draw_string(24, smy + 110, "System Monitor", 0x212529);
+        /* Search bar at top */
+        draw_rounded_rect(sm_x + 16, sm_y + 16, sm_w - 32, 32, 16, 0x3D3D3D);
+        draw_string(sm_x + 40, sm_y + 23, "Search apps, settings...", 0x808080);
+        /* Magnifying glass icon */
+        draw_circle(sm_x + 30, sm_y + 30, 5, 0x808080);
+        draw_line(sm_x + 34, sm_y + 34, sm_x + 37, sm_y + 37, 0x808080);
 
-        // Search Programs box at the bottom left
-        draw_rect(20, smy + 322, 142, 22, 0xFAFAFA);
-        draw_rect_outline(20, smy + 322, 142, 22, 0xCED4DA);
-        draw_string(26, smy + 326, "Search programs", 0x868E96);
+        /* "Pinned" section header */
+        draw_string(sm_x + 20, sm_y + 60, "Pinned", 0xFFFFFF);
+        draw_string(sm_x + sm_w - 80, sm_y + 60, "All apps >", 0x60CDFF);
 
-        // Right Pane (shortcuts list)
-        draw_string(176, smy + 20, "Documents", 0xFFFFFF);
-        draw_string(176, smy + 50, "Pictures", 0xFFFFFF);
-        draw_string(176, smy + 80, "Games", 0xFFFFFF);
-        draw_string(176, smy + 110, "Control Panel", 0xFFFFFF);
+        /* Pinned apps grid (2x2) */
+        struct { const char* name; uint32_t color; const char* sym; } pinned[4] = {
+            {"System",   0x0078D4, "PC"},
+            {"Terminal", 0x0C0C0C, ">_"},
+            {"Calc",     0x3B3B3B, "+-"},
+            {"Monitor",  0x1A1A1A, "/\\"},
+        };
 
-        // User profile smiley avatar box
-        int pic_x = 230;
-        int pic_y = smy + 10;
-        int pic_w = 40;
-        int pic_h = 40;
-        draw_rect(pic_x, pic_y, pic_w, pic_h, 0x74C0FC);
-        draw_rect_outline(pic_x, pic_y, pic_w, pic_h, 0xFFFFFF);
-        draw_rect_outline(pic_x - 1, pic_y - 1, pic_w + 2, pic_h + 2, 0xADB5BD);
-        // Smiley Face profile picture
-        draw_circle(pic_x + 20, pic_y + 20, 10, 0xFFD43B);
-        draw_pixel(pic_x + 17, pic_y + 17, 0x000000);
-        draw_pixel(pic_x + 23, pic_y + 17, 0x000000);
-        draw_pixel(pic_x + 16, pic_y + 23, 0x000000);
-        draw_pixel(pic_x + 17, pic_y + 24, 0x000000);
-        draw_pixel(pic_x + 18, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 19, pic_y + 25, 0x000000);
-        draw_circle(pic_x + 20, pic_y + 20, 10, 0xFFD43B);
-        draw_pixel(pic_x + 17, pic_y + 17, 0x000000);
-        draw_pixel(pic_x + 23, pic_y + 17, 0x000000);
-        draw_pixel(pic_x + 16, pic_y + 23, 0x000000);
-        draw_pixel(pic_x + 17, pic_y + 24, 0x000000);
-        draw_pixel(pic_x + 18, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 19, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 20, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 21, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 22, pic_y + 25, 0x000000);
-        draw_pixel(pic_x + 23, pic_y + 24, 0x000000);
-        draw_pixel(pic_x + 24, pic_y + 23, 0x000000);
+        int grid_x = sm_x + 20;
+        int grid_y = sm_y + 84;
+        int tile_w = (sm_w - 60) / 2;
+        int tile_h = 54;
+        int gap = 8;
 
-        // Shutdown Button at the bottom right
-        draw_rect(180, smy + 320, 100, 28, 0xFA5252);
-        draw_rect_outline(180, smy + 320, 100, 28, 0xFFFFFF);
-        draw_string(195, smy + 326, "Shutdown", 0xFFFFFF);
+        for (int i = 0; i < 4; i++) {
+            int col = i % 2;
+            int row = i / 2;
+            int tx = grid_x + col * (tile_w + gap);
+            int ty = grid_y + row * (tile_h + gap);
+
+            /* Tile background */
+            draw_rounded_rect(tx, ty, tile_w, tile_h, 6, 0x3B3B3B);
+
+            /* Icon square */
+            draw_rounded_rect(tx + 8, ty + 8, 28, 28, 4, pinned[i].color);
+            draw_string(tx + 13, ty + 14, pinned[i].sym, 0xFFFFFF);
+
+            /* App name */
+            draw_string(tx + 42, ty + 20, pinned[i].name, 0xFFFFFF);
+        }
+
+        /* Separator line */
+        draw_hline(sm_x + 20, sm_y + sm_h - 80, sm_w - 40, 0x3D3D3D);
+
+        /* User profile and power */
+        /* User avatar circle */
+        draw_circle_filled(sm_x + 36, sm_y + sm_h - 50, 14, 0x0078D4);
+        draw_string(sm_x + 30, sm_y + sm_h - 56, "U", 0xFFFFFF);
+
+        draw_string(sm_x + 56, sm_y + sm_h - 56, "User", 0xFFFFFF);
+
+        /* Power button */
+        int pw_x = sm_x + sm_w - 44;
+        int pw_y = sm_y + sm_h - 64;
+        draw_rounded_rect(pw_x, pw_y, 28, 28, 4, 0x3B3B3B);
+        draw_circle(pw_x + 14, pw_y + 16, 6, 0xFFFFFF);
+        draw_vline(pw_x + 14, pw_y + 8, 6, 0xFFFFFF);
     }
 
-    // 5. Draw Taskbar (translucent glassmorphism bottom row)
-    int tby = (int)screen_height - 40;
-    draw_rect_translucent(0, tby, screen_width, 40, 0x1A365D, 180);
-    draw_rect(0, tby, screen_width, 1, 0x4DABF7); // Top light highlight line
+    /* 5. Taskbar (Windows 11 centered dark frosted glass) */
+    int tb_h = 48;
+    int tby = (int)screen_height - tb_h;
 
-    // Start Orb Button (circular blue glass orb)
-    draw_circle(24, tby + 20, 16, 0x1971C2);
-    draw_circle(24, tby + 20, 14, 0x228BE6);
-    draw_start_logo(24, tby + 20);
+    /* Taskbar background with subtle transparency */
+    draw_rounded_rect_translucent(4, tby + 2, screen_width - 8, tb_h - 4, 8, WIN11_TASKBAR_BG, 230);
+    /* Top highlight line */
+    draw_hline(12, tby + 2, screen_width - 24, 0x333333);
 
-    // Draw taskbar glassy buttons for open applications
-    char* app_names[4] = {"Comp", "Term", "Calc", "Mon"};
-    uint32_t app_colors[4] = {0xCCCCCC, 0x111111, 0x4A6FA5, 0x1E1E1E};
+    /* Centered app icons */
+    int icon_count = 5; /* Start + 4 apps */
+    int icon_size = 32;
+    int icon_gap = 6;
+    int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
+    int icons_start_x = ((int)screen_width - total_icons_w) / 2;
+
+    /* Start button (Windows 11 4-pane logo) */
+    int start_x = icons_start_x;
+    int start_y = tby + (tb_h - icon_size) / 2;
+    draw_rounded_rect(start_x, start_y, icon_size, icon_size, 4, 0x333333);
+    draw_win11_logo(start_x + icon_size / 2, start_y + icon_size / 2, WIN11_ACCENT_LIGHT);
+
+    /* App taskbar icons */
+    uint32_t app_icon_colors[4] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A};
+    char* app_icon_syms[4] = {"PC", ">_", "+-", "/\\"};
+
     for (int i = 0; i < MAX_WINDOWS; i++) {
         gui_window_t* w = &windows[i];
         if (w->closed) continue;
 
-        int bx = 55 + i * 70;
-        int by = tby + 5;
-        int bw = 64;
-        int bh = 30;
+        int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
+        int iy = tby + (tb_h - icon_size) / 2;
 
+        /* Icon background */
+        uint32_t bg = (active_win_id == w->id) ? 0x3D3D3D : 0x2D2D2D;
+        draw_rounded_rect(ix, iy, icon_size, icon_size, 4, bg);
+
+        /* Small colored icon */
+        draw_rounded_rect(ix + 6, iy + 6, 20, 20, 3, app_icon_colors[i]);
+        draw_string(ix + 9, iy + 9, app_icon_syms[i], 0xFFFFFF);
+
+        /* Active indicator pill */
         if (active_win_id == w->id) {
-            draw_rect_translucent(bx, by, bw, bh, 0x4DABF7, 180);
-            draw_rect_outline(bx, by, bw, bh, 0xFFFFFF);
-            draw_rect(bx, by + bh - 3, bw, 3, 0x228BE6); // active bottom bar
-        } else {
-            draw_rect_translucent(bx, by, bw, bh, 0x495057, 100);
-            draw_rect_outline(bx, by, bw, bh, 0xCED4DA);
+            int pill_w = 16;
+            int pill_x = ix + (icon_size - pill_w) / 2;
+            int pill_y = iy + icon_size + 1;
+            draw_rounded_rect(pill_x, pill_y, pill_w, 3, 1, WIN11_ACCENT);
+        } else if (!w->minimized) {
+            /* Small dot for open-but-unfocused */
+            draw_rect(ix + icon_size / 2 - 2, iy + icon_size + 1, 4, 2, 0x606060);
         }
-
-        // Draw small color block representing app icon
-        draw_rect(bx + 6, by + 8, 12, 12, app_colors[i]);
-        draw_rect_outline(bx + 6, by + 8, 12, 12, 0xFFFFFF);
-
-        draw_string(bx + 22, by + 10, app_names[i], 0xFFFFFF);
     }
 
-    // System Tray clock and indicators
+    /* System tray (right side) */
+    /* Update clock */
     ticks_counter++;
     if (ticks_counter % 100 == 0) {
         seconds++;
@@ -517,47 +657,37 @@ void gui_draw(void) {
         time_str[2] = ':';
         time_str[3] = '0' + (minutes / 10);
         time_str[4] = '0' + (minutes % 10);
-        time_str[5] = ':';
-        time_str[6] = '0' + (seconds / 10);
-        time_str[7] = '0' + (seconds % 10);
-        time_str[8] = ' ';
-        time_str[9] = 'P';
-        time_str[10] = 'M';
-        time_str[11] = '\0';
+        time_str[5] = ' ';
+        time_str[6] = 'P';
+        time_str[7] = 'M';
+        time_str[8] = '\0';
     }
 
-    draw_string(screen_width - 75, tby + 12, time_str, 0xFFFFFF);
+    int tray_x = (int)screen_width - 140;
 
-    // Network Signal strength indicator bars
-    int net_x = screen_width - 105;
-    int net_y = tby + 28;
-    for (int bar = 0; bar < 5; bar++) {
-        int bar_h = 3 + bar * 3;
-        draw_rect(net_x + bar * 4, net_y - bar_h, 3, bar_h, 0x00FF00);
+    /* Wi-Fi icon */
+    for (int arc = 0; arc < 3; arc++) {
+        int r = 3 + arc * 3;
+        draw_circle(tray_x, tby + 30, r, 0xCCCCCC);
     }
+    draw_rect(tray_x - 1, tby + 31, 3, 8, WIN11_TASKBAR_BG); /* clear bottom half */
 
-    // Volume speaker tray icon
-    int vol_x = screen_width - 125;
-    int vol_y = tby + 16;
-    draw_rect(vol_x, vol_y + 3, 3, 4, 0xFFFFFF);
-    draw_pixel(vol_x + 3, vol_y + 3, 0xFFFFFF);
-    draw_pixel(vol_x + 4, vol_y + 2, 0xFFFFFF);
-    draw_pixel(vol_x + 5, vol_y + 1, 0xFFFFFF);
-    draw_pixel(vol_x + 3, vol_y + 4, 0xFFFFFF);
-    draw_pixel(vol_x + 4, vol_y + 4, 0xFFFFFF);
-    draw_pixel(vol_x + 5, vol_y + 4, 0xFFFFFF);
-    draw_pixel(vol_x + 3, vol_y + 5, 0xFFFFFF);
-    draw_pixel(vol_x + 4, vol_y + 5, 0xFFFFFF);
-    draw_pixel(vol_x + 5, vol_y + 5, 0xFFFFFF);
-    draw_pixel(vol_x + 3, vol_y + 6, 0xFFFFFF);
-    draw_pixel(vol_x + 4, vol_y + 7, 0xFFFFFF);
-    draw_pixel(vol_x + 5, vol_y + 8, 0xFFFFFF);
+    /* Volume icon */
+    draw_rect(tray_x + 24, tby + 22, 4, 8, 0xCCCCCC);
+    draw_rect(tray_x + 28, tby + 20, 2, 12, 0xCCCCCC);
+    draw_circle(tray_x + 34, tby + 26, 5, 0xCCCCCC);
+    draw_rect(tray_x + 29, tby + 20, 6, 12, WIN11_TASKBAR_BG); /* mask inner circle */
 
-    // Show Desktop glassy sliver on the very right
-    draw_rect_translucent(screen_width - 10, tby, 10, 40, 0xADB5BD, 100);
-    draw_rect(screen_width - 10, tby, 1, 40, 0xCED4DA);
+    /* Battery indicator */
+    draw_rect_outline(tray_x + 48, tby + 20, 16, 10, 0xCCCCCC);
+    draw_rect(tray_x + 64, tby + 23, 2, 4, 0xCCCCCC);
+    draw_rect(tray_x + 50, tby + 22, 12, 6, WIN11_GREEN); /* Fill */
 
-    // Update System Monitor graphs
+    /* Clock text */
+    draw_string(tray_x + 74, tby + 12, time_str, 0xCCCCCC);
+    draw_string(tray_x + 74, tby + 28, date_str, 0x999999);
+
+    /* Update system monitor data */
     val_timer++;
     if (val_timer >= 20) {
         val_timer = 0;
@@ -570,30 +700,42 @@ void gui_draw(void) {
         sysmon_values[59] = load;
     }
 
-    // 6. Draw High-Fidelity White Mouse Pointer with drop shadow outline
+    /* 6. Mouse cursor (Windows 11 style) */
     int mx = mouse_x;
     int my = mouse_y;
-    for (int r = 0; r < 20; r++) {
-        for (int c = 0; c < 12; c++) {
-            char pixel = mouse_cursor_bitmap[r][c];
-            if (pixel == 'X') {
-                draw_pixel(mx + c, my + r, 0x000000); // Black outline
-            } else if (pixel == '.') {
-                draw_pixel(mx + c, my + r, 0xFFFFFF); // White fill
+    /* Shadow */
+    for (int r = 0; r < 22; r++) {
+        for (int c = 0; c < 16; c++) {
+            char p = cursor_bitmap[r][c];
+            if (p == 'X' || p == '.') {
+                draw_pixel_alpha(mx + c + 1, my + r + 1, 0x000000, 40);
+            }
+        }
+    }
+    /* Main cursor */
+    for (int r = 0; r < 22; r++) {
+        for (int c = 0; c < 16; c++) {
+            char p = cursor_bitmap[r][c];
+            if (p == 'X') {
+                draw_pixel(mx + c, my + r, 0x000000);
+            } else if (p == '.') {
+                draw_pixel(mx + c, my + r, 0xFFFFFF);
             }
         }
     }
 
-    // 7. Blit buffer to screen
+    /* 7. Blit */
     blit_buffer();
 }
 
-/* Mouse click interaction logic */
+/* ============================================================
+ * Mouse click interaction logic
+ * ============================================================ */
 void gui_handle_mouse(int mx, int my, int click, int r_click) {
     (void)r_click;
     static int was_clicked = 0;
 
-    // Dragging active window
+    /* Dragging active window */
     if (active_win_id >= 0 && active_win_id < MAX_WINDOWS) {
         gui_window_t* win = &windows[active_win_id];
         if (win->dragging) {
@@ -614,27 +756,33 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
     if (click && !was_clicked) {
         was_clicked = 1;
 
-        // Check Show Desktop sliver click
-        if (mx >= (int)screen_width - 10 && mx < (int)screen_width && my >= (int)screen_height - 40 && my < (int)screen_height) {
-            for (int w = 0; w < MAX_WINDOWS; w++) {
-                windows[w].minimized = 1;
-            }
-            active_win_id = -1;
-            start_menu_open = 0;
+        int tb_h = 48;
+        int tby = (int)screen_height - tb_h;
+
+        /* Taskbar centered icon clicks */
+        int icon_count = 5;
+        int icon_size = 32;
+        int icon_gap = 6;
+        int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
+        int icons_start_x = ((int)screen_width - total_icons_w) / 2;
+
+        /* Start button click */
+        int start_x = icons_start_x;
+        int start_y = tby + (tb_h - icon_size) / 2;
+        if (mx >= start_x && mx < start_x + icon_size && my >= start_y && my < start_y + icon_size) {
+            start_menu_open = !start_menu_open;
             return;
         }
 
-        // Check taskbar buttons click
-        int tby = (int)screen_height - 40;
+        /* App icon clicks */
         for (int i = 0; i < MAX_WINDOWS; i++) {
             gui_window_t* w = &windows[i];
             if (w->closed) continue;
 
-            int bx = 55 + i * 70;
-            int by = tby + 5;
-            int bw = 64;
-            int bh = 30;
-            if (mx >= bx && mx < bx + bw && my >= by && my < by + bh) {
+            int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
+            int iy = tby + (tb_h - icon_size) / 2;
+
+            if (mx >= ix && mx < ix + icon_size && my >= iy && my < iy + icon_size) {
                 if (w->minimized) {
                     w->minimized = 0;
                     active_win_id = w->id;
@@ -649,86 +797,64 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             }
         }
 
-        // Check Start Menu items if open
-        int smy = (int)screen_height - 400;
+        /* Start Menu item clicks */
         if (start_menu_open) {
-            // Clicked Shutdown button
-            if (mx >= 180 && mx < 280 && my >= smy + 320 && my < smy + 348) {
+            int sm_w = 340;
+            int sm_h = 360;
+            int sm_x = ((int)screen_width - sm_w) / 2;
+            int sm_y = (int)screen_height - 48 - sm_h - 12;
+
+            /* Power button click */
+            int pw_x = sm_x + sm_w - 44;
+            int pw_y = sm_y + sm_h - 64;
+            if (mx >= pw_x && mx < pw_x + 28 && my >= pw_y && my < pw_y + 28) {
                 gui_write_string("Shutting down...\n");
-                outw(0x604, 0x2000); // Standard QEMU shutdown port
+                outw(0x604, 0x2000);
                 __asm__ volatile("cli; hlt");
             }
-            // Clicked App shortcuts inside start menu
-            if (mx >= 16 && mx < 166) {
-                if (my >= smy + 10 && my < smy + 40) {
-                    windows[0].closed = 0;
-                    windows[0].minimized = 0;
-                    active_win_id = 0;
-                    start_menu_open = 0;
-                    return;
-                }
-                if (my >= smy + 40 && my < smy + 70) {
-                    windows[1].closed = 0;
-                    windows[1].minimized = 0;
-                    active_win_id = 1;
-                    start_menu_open = 0;
-                    return;
-                }
-                if (my >= smy + 70 && my < smy + 100) {
-                    windows[2].closed = 0;
-                    windows[2].minimized = 0;
-                    active_win_id = 2;
-                    start_menu_open = 0;
-                    return;
-                }
-                if (my >= smy + 100 && my < smy + 130) {
-                    windows[3].closed = 0;
-                    windows[3].minimized = 0;
-                    active_win_id = 3;
+
+            /* Pinned apps grid clicks */
+            int grid_x = sm_x + 20;
+            int grid_y = sm_y + 84;
+            int tile_w = (sm_w - 60) / 2;
+            int tile_h = 54;
+            int gap = 8;
+
+            for (int i = 0; i < 4; i++) {
+                int col = i % 2;
+                int row = i / 2;
+                int tx = grid_x + col * (tile_w + gap);
+                int ty = grid_y + row * (tile_h + gap);
+
+                if (mx >= tx && mx < tx + tile_w && my >= ty && my < ty + tile_h) {
+                    windows[i].closed = 0;
+                    windows[i].minimized = 0;
+                    active_win_id = i;
                     start_menu_open = 0;
                     return;
                 }
             }
 
-            // Click outside start menu closes it
-            if (mx > 290 || my < smy || my > tby) {
+            /* Click outside start menu closes it */
+            if (mx < sm_x || mx > sm_x + sm_w || my < sm_y || my > sm_y + sm_h) {
                 start_menu_open = 0;
             }
         }
 
-        // Check Taskbar Start Orb
-        if (mx >= 8 && mx < 40 && my >= tby + 4 && my < tby + 36) {
-            start_menu_open = !start_menu_open;
-            return;
+        /* Desktop icon clicks */
+        for (int i = 0; i < 4; i++) {
+            int ix = 30;
+            int iy = 30 + i * 90;
+            if (mx >= ix && mx < ix + 48 && my >= iy && my < iy + 70) {
+                windows[i].closed = 0;
+                windows[i].minimized = 0;
+                active_win_id = i;
+                start_menu_open = 0;
+                return;
+            }
         }
 
-        // Check Desktop Icons
-        if (mx >= 14 && mx < 70 && my >= 20 && my < 70) {
-            windows[0].closed = 0;
-            windows[0].minimized = 0;
-            active_win_id = 0;
-            return;
-        }
-        if (mx >= 14 && mx < 70 && my >= 100 && my < 150) {
-            windows[1].closed = 0;
-            windows[1].minimized = 0;
-            active_win_id = 1;
-            return;
-        }
-        if (mx >= 14 && mx < 70 && my >= 180 && my < 230) {
-            windows[2].closed = 0;
-            windows[2].minimized = 0;
-            active_win_id = 2;
-            return;
-        }
-        if (mx >= 14 && mx < 70 && my >= 260 && my < 310) {
-            windows[3].closed = 0;
-            windows[3].minimized = 0;
-            active_win_id = 3;
-            return;
-        }
-
-        // Check Window Clicks (from top priority down)
+        /* Window clicks (from top priority down) */
         int win_order[MAX_WINDOWS];
         int idx = 0;
         if (active_win_id >= 0) {
@@ -745,49 +871,58 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             gui_window_t* win = &windows[i];
             if (win->closed || win->minimized) continue;
 
-            // Clicked inside window frame
             if (mx >= win->x && mx < win->x + win->w && my >= win->y && my < win->y + win->h) {
-                active_win_id = win->id; // Focus this window!
+                active_win_id = win->id;
 
-                // Check Close Button
-                int bx_close = win->x + win->w - 18;
-                if (mx >= bx_close && mx < bx_close + 12 && my >= win->y + 4 && my < win->y + 16) {
+                int titlebar_h = 32;
+                int btn_w = 46;
+
+                /* Close button */
+                int close_x = win->x + win->w - btn_w;
+                if (mx >= close_x && mx < close_x + btn_w && my >= win->y && my < win->y + 30) {
                     win->closed = 1;
                     if (active_win_id == win->id) active_win_id = -1;
                     return;
                 }
 
-                // Check Minimize Button
-                int bx_min = win->x + win->w - 50;
-                if (mx >= bx_min && mx < bx_min + 12 && my >= win->y + 4 && my < win->y + 16) {
+                /* Minimize button */
+                int min_x = close_x - btn_w * 2;
+                if (mx >= min_x && mx < min_x + btn_w && my >= win->y && my < win->y + 30) {
                     win->minimized = 1;
                     if (active_win_id == win->id) active_win_id = -1;
                     return;
                 }
 
-                // Check Title Bar (dragging)
-                if (my >= win->y && my < win->y + 24) {
+                /* Titlebar drag */
+                if (my >= win->y && my < win->y + titlebar_h) {
                     win->dragging = 1;
                     win->drag_off_x = mx - win->x;
                     win->drag_off_y = my - win->y;
                     return;
                 }
 
-                // Check Calculator Inputs if clicked inside Calculator body
+                /* Calculator button clicks */
                 if (win->id == 2) {
-                    int start_bx = win->x + 12;
-                    int start_by = win->y + 60;
+                    int content_y = win->y + 32;
+                    int pad = 6;
+                    int btn_gap = 4;
+                    int usable_w = win->w - pad * 2;
+                    int calc_btn_w = (usable_w - btn_gap * 3) / 4;
+                    int calc_btn_h = 36;
+                    int grid_y = content_y + 44;
+
                     char* layout[4][4] = {
                         {"7", "8", "9", "/"},
                         {"4", "5", "6", "*"},
                         {"1", "2", "3", "-"},
                         {"0", "C", "=", "+"}
                     };
+
                     for (int r = 0; r < 4; r++) {
                         for (int c = 0; c < 4; c++) {
-                            int bx = start_bx + c * 40;
-                            int by = start_by + r * 35;
-                            if (mx >= bx && mx < bx + 34 && my >= by && my < by + 28) {
+                            int bx = win->x + pad + c * (calc_btn_w + btn_gap);
+                            int by = grid_y + r * (calc_btn_h + btn_gap);
+                            if (mx >= bx && mx < bx + calc_btn_w && my >= by && my < by + calc_btn_h) {
                                 char key = layout[r][c][0];
                                 if (key >= '0' && key <= '9') {
                                     if (calc_new_number || strcmp(calc_buf, "0") == 0) {
@@ -803,15 +938,12 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     }
                                 } else if (key == 'C') {
                                     strcpy(calc_buf, "0");
-                                    op1 = 0;
-                                    op2 = 0;
-                                    calc_op = 0;
+                                    op1 = 0; op2 = 0; calc_op = 0;
                                     calc_new_number = 1;
                                 } else if (key == '=') {
                                     int temp_val = 0;
-                                    for (int s = 0; calc_buf[s] != '\0'; s++) {
+                                    for (int s = 0; calc_buf[s] != '\0'; s++)
                                         temp_val = temp_val * 10 + (calc_buf[s] - '0');
-                                    }
                                     op2 = temp_val;
                                     int res = 0;
                                     if (calc_op == '+') res = op1 + op2;
@@ -819,15 +951,13 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     else if (calc_op == '*') res = op1 * op2;
                                     else if (calc_op == '/') res = (op2 != 0) ? op1 / op2 : 0;
                                     else res = op2;
-
                                     int_to_ascii(res, calc_buf);
                                     calc_new_number = 1;
                                     calc_op = 0;
                                 } else {
                                     int temp_val = 0;
-                                    for (int s = 0; calc_buf[s] != '\0'; s++) {
+                                    for (int s = 0; calc_buf[s] != '\0'; s++)
                                         temp_val = temp_val * 10 + (calc_buf[s] - '0');
-                                    }
                                     op1 = temp_val;
                                     calc_op = key;
                                     calc_new_number = 1;
@@ -847,7 +977,9 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
     }
 }
 
-/* Keyboard character routing to focused Terminal window */
+/* ============================================================
+ * Keyboard character routing to focused Terminal window
+ * ============================================================ */
 void gui_handle_keyboard(char c) {
     if (active_win_id != 1) return;
 
