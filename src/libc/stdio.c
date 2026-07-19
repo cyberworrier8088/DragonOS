@@ -74,22 +74,86 @@ int vsprintf(char* str, const char* format, va_list ap) {
     while (*f) {
         if (*f == '%') {
             f++;
-            // Basic formats
-            if (*f == 'd') {
+            
+            int zero_pad = 0;
+            int width = 0;
+            int precision = -1;
+            
+            // Check for zero padding flag
+            if (*f == '0') {
+                zero_pad = 1;
+                f++;
+            }
+            
+            // Parse width
+            while (*f >= '0' && *f <= '9') {
+                width = width * 10 + (*f - '0');
+                f++;
+            }
+            
+            // Parse precision
+            if (*f == '.') {
+                f++;
+                precision = 0;
+                while (*f >= '0' && *f <= '9') {
+                    precision = precision * 10 + (*f - '0');
+                    f++;
+                }
+            }
+            
+            // Format type
+            if (*f == 'd' || *f == 'i') {
                 int val = va_arg(ap, int);
                 char num[32];
                 int_to_ascii(val, num);
-                strcpy(d, num);
-                d += strlen(num);
+                
+                int len = strlen(num);
+                int neg = 0;
+                char* p = num;
+                if (num[0] == '-') {
+                    neg = 1;
+                    p++;
+                    len--;
+                }
+                
+                // Determine padding target size
+                int target = len;
+                if (precision > target) target = precision;
+                if (width > target + neg && zero_pad) target = width - neg;
+                
+                // Write negative sign if applicable
+                if (neg) {
+                    *d++ = '-';
+                }
+                
+                // Write leading zeros
+                for (int i = len; i < target; i++) {
+                    *d++ = '0';
+                }
+                
+                // Write actual digits
+                strcpy(d, p);
+                d += len;
+                
             } else if (*f == 'u') {
                 unsigned int val = va_arg(ap, unsigned int);
                 char num[32];
                 int_to_ascii((int)val, num); // simple wrap
+                
+                int len = strlen(num);
+                int target = len;
+                if (precision > target) target = precision;
+                if (width > target && zero_pad) target = width;
+                
+                for (int i = len; i < target; i++) {
+                    *d++ = '0';
+                }
                 strcpy(d, num);
-                d += strlen(num);
+                d += len;
+                
             } else if (*f == 'x') {
                 unsigned int val = va_arg(ap, unsigned int);
-                char hex[16];
+                char hex[32];
                 int idx = 0;
                 if (val == 0) {
                     hex[idx++] = '0';
@@ -107,8 +171,18 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     hex[i] = hex[j];
                     hex[j] = temp;
                 }
+                
+                int len = idx;
+                int target = len;
+                if (precision > target) target = precision;
+                if (width > target && zero_pad) target = width;
+                
+                for (int i = len; i < target; i++) {
+                    *d++ = '0';
+                }
                 strcpy(d, hex);
-                d += strlen(hex);
+                d += len;
+                
             } else if (*f == 's') {
                 char* s = va_arg(ap, char*);
                 if (!s) s = "(null)";
