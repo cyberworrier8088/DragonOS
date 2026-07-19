@@ -6228,6 +6228,45 @@ lua_State*L=lua_newstate(l_alloc,NULL);
 if(L)lua_atpanic(L,&panic);
 return L;
 }
+static int luaB_print(lua_State* L) {
+    int n = lua_gettop(L);
+    int i;
+    for (i = 1; i <= n; i++) {
+        size_t l;
+        const char* s = lua_tolstring(L, i, &l);
+        if (s) {
+            if (i > 1) printf("\t");
+            printf("%s", s);
+        } else {
+            int t = lua_type(L, i);
+            if (i > 1) printf("\t");
+            if (t == 0) printf("nil");
+            else if (t == 1) printf(lua_toboolean(L, i) ? "true" : "false");
+            else printf("table/userdata");
+        }
+    }
+    printf("\n");
+    return 0;
+}
+
+static int luaB_tostring(lua_State* L) {
+    luaL_checkany(L, 1);
+    size_t l;
+    const char* s = lua_tolstring(L, 1, &l);
+    if (s) {
+        lua_pushlstring(L, s, l);
+    } else {
+        int t = lua_type(L, 1);
+        if (t == 0) lua_pushliteral(L, "nil");
+        else if (t == 1) {
+            if (lua_toboolean(L, 1)) lua_pushliteral(L, "true");
+            else lua_pushliteral(L, "false");
+        }
+        else lua_pushliteral(L, "table/userdata");
+    }
+    return 1;
+}
+
 static int luaB_tonumber(lua_State*L){
 int base=luaL_optint(L,2,10);
 if(base==10){
@@ -6426,6 +6465,8 @@ static const luaL_Reg base_funcs[]={
 {"loadstring",luaB_loadstring},
 {"next",luaB_next},
 {"pcall",luaB_pcall},
+{"print",luaB_print},
+{"tostring",luaB_tostring},
 {"rawget",luaB_rawget},
 {"setfenv",luaB_setfenv},
 {"setmetatable",luaB_setmetatable},
@@ -7771,11 +7812,11 @@ if(luaL_loadfile(L,argv[1]))
 goto err;
 for(i=2;i<argc;i++)
 lua_pushstring(L,argv[i]);
-if(lua_pcall(L,argc-2,0,0)){
-err:
-fprintf(stderr,"Error: %s\n",lua_tostring(L,-1));
-return 1;
-}
+    if(lua_pcall(L,argc-2,0,0)){
+    err:
+        printf("Error: %s\n",lua_tostring(L,-1));
+        return 1;
+    }
 lua_close(L);
 return 0;
 }
@@ -7787,7 +7828,7 @@ int lua_main_string(const char* code) {
     luaL_register(L, "bit", bitlib);
     extern size_t strlen(const char* s);
     if (luaL_loadbuffer(L, code, strlen(code), code) || lua_pcall(L, 0, 0, 0)) {
-        fprintf(stderr, "Error: %s\n", lua_tostring(L, -1));
+        printf("Error: %s\n", lua_tostring(L, -1));
         lua_close(L);
         return 1;
     }
