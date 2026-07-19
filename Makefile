@@ -54,6 +54,7 @@ OBJS = boot.o \
        src/shell/shell.o \
        src/shell/gui.o \
        src/shell/minilua.o \
+       src/shell/minitcc.o \
        kernel.o
 
 .PHONY: all clean verify run run-curses run-nographic
@@ -115,6 +116,7 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
 	cp limine-bin/limine-uefi-cd.bin isodir/boot/
 	cp wallpaper.bmp isodir/boot/
 	cp test.lua isodir/boot/
+	cp test.c isodir/boot/
 	xorriso -as mkisofs \
 		-b boot/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table \

@@ -141,6 +141,7 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string("  cat <file>  Print file content\n");
         gui_write_string("  stat <file> Print file metadata\n");
         gui_write_string("  lua [file]  Run Lua script or hello snippet\n");
+        gui_write_string("  tcc [file]  Compile/run C code or test suite\n");
         gui_write_string("  reboot      Reboot the computer\n");
         gui_write_string("  halt        Halt the CPU safely\n");
     } else if (strcmp(cmd, "about") == 0) {
@@ -232,6 +233,36 @@ static void gui_execute_command(const char* cmd) {
                 lua_main(2, argv);
             } else {
                 gui_write_string("lua: cannot open script file: ");
+                gui_write_string(filepath);
+                gui_write_string("\n");
+            }
+        }
+    } else if (strncmp(cmd, "tcc ", 4) == 0 || strcmp(cmd, "tcc") == 0) {
+        const char* filepath = (strcmp(cmd, "tcc") == 0) ? "" : cmd + 4;
+        while (*filepath == ' ') filepath++;
+        
+        if (strlen(filepath) == 0) {
+            gui_write_string("Running built-in TCC demo:\n");
+            extern int tcc_main_string(const char* code);
+            const char* test_code = 
+                "int main() {\n"
+                "    printf(\"Hello from TCC built-in test!\\n\");\n"
+                "    int sum = 0;\n"
+                "    for (int i = 1; i <= 10; i++) sum = sum + i;\n"
+                "    printf(\"Sum of 1..10 = %d\\n\", sum);\n"
+                "    return 0;\n"
+                "}\n";
+            tcc_main_string(test_code);
+        } else {
+            // Check if file exists
+            int fd = open(filepath, 0);
+            if (fd >= 0) {
+                close(fd);
+                char* argv[] = {"tcc", (char*)filepath};
+                extern int tcc_main(int argc, char** argv);
+                tcc_main(2, argv);
+            } else {
+                gui_write_string("tcc: cannot open source file: ");
                 gui_write_string(filepath);
                 gui_write_string("\n");
             }

@@ -408,3 +408,15 @@ long strtol(const char* nptr, char** endptr, int base) {
 
     return neg ? -acc : acc;
 }
+
+/* --- Pseudo-random number generator (LCG) --- */
+static unsigned long rand_state = 1;
+
+int rand(void) {
+    rand_state = rand_state * 6364136223846793005UL + 1442695040888963407UL;
+    return (int)((rand_state >> 33) & 0x7FFFFFFF);
+}
+
+void srand(unsigned int seed) {
+    rand_state = (unsigned long)seed;
+}

@@ -228,11 +228,37 @@ int vsprintf(char* str, const char* format, va_list ap) {
                 strcpy(d, hex);
                 d += len;
                 
+            } else if (*f == 'p') {
+                unsigned long val = (unsigned long)va_arg(ap, void*);
+                *d++ = '0'; *d++ = 'x';
+                char hex[20];
+                int idx = 0;
+                if (val == 0) {
+                    hex[idx++] = '0';
+                } else {
+                    while (val > 0) {
+                        int rem = val % 16;
+                        hex[idx++] = (rem < 10) ? (rem + '0') : (rem - 10 + 'a');
+                        val /= 16;
+                    }
+                }
+                hex[idx] = '\0';
+                for (int i = 0, j = idx - 1; i < j; i++, j--) {
+                    char temp = hex[i];
+                    hex[i] = hex[j];
+                    hex[j] = temp;
+                }
+                strcpy(d, hex);
+                d += idx;
+
             } else if (*f == 's') {
                 char* s = va_arg(ap, char*);
                 if (!s) s = "(null)";
-                strcpy(d, s);
-                d += strlen(s);
+                int slen = strlen(s);
+                if (precision >= 0 && precision < slen) slen = precision;
+                /* Right-pad with spaces if width > slen */
+                for (int i = slen; i < width; i++) *d++ = ' ';
+                for (int i = 0; i < slen; i++) *d++ = s[i];
             } else if (*f == 'c') {
                 char c = (char)va_arg(ap, int);
                 *d++ = c;
@@ -241,6 +267,7 @@ int vsprintf(char* str, const char* format, va_list ap) {
             } else {
                 // Unknown format, copy raw
                 *d++ = '%';
+                if (is_long) *d++ = 'l';
                 *d++ = *f;
             }
         } else {

@@ -39,6 +39,7 @@ int _CRT_glob = 0;
 #include <setjmp.h>
 #include <errno.h>
 #include <time.h>
+#include <stdint.h>
 typedef enum{
 TM_INDEX,
 TM_NEWINDEX,
@@ -6228,10 +6229,74 @@ lua_State*L=lua_newstate(l_alloc,NULL);
 if(L)lua_atpanic(L,&panic);
 return L;
 }
+
+/* --- New Lua base library functions --- */
+static int luaB_select(lua_State* L) {
+    int n = lua_gettop(L);
+    if (lua_type(L, 1) == 4) { /* string */
+        const char* s = lua_tostring(L, 1);
+        if (s && s[0] == '#') {
+            lua_pushinteger(L, n - 1);
+            return 1;
+        }
+    }
+    int i = luaL_checkint(L, 1);
+    if (i < 0) i = n + i;
+    else if (i > n) i = n;
+    if (i < 1) luaL_argerror(L, 1, "index out of range");
+    return n - i;
+}
+
+static int luaB_rawset(lua_State* L) {
+    luaL_checktype(L, 1, 5); /* table */
+    luaL_checkany(L, 2);
+    luaL_checkany(L, 3);
+    lua_settop(L, 3);
+    lua_rawset(L, 1);
+    return 1;
+}
+
+static int luaB_rawequal(lua_State* L) {
+    luaL_checkany(L, 1);
+    luaL_checkany(L, 2);
+    lua_pushboolean(L, lua_rawequal(L, 1, 2));
+    return 1;
+}
+
+static int luaB_rawlen(lua_State* L) {
+    int t = lua_type(L, 1);
+    luaL_argcheck(L, t == 5 || t == 4, 1, "table or string expected");
+    lua_pushinteger(L, (int)lua_objlen(L, 1));
+    return 1;
+}
+
+static int luaB_getmetatable(lua_State* L) {
+    luaL_checkany(L, 1);
+    if (!lua_getmetatable(L, 1)) {
+        lua_pushnil(L);
+        return 1;
+    }
+    /* Check for __metatable field */
+    lua_pushliteral(L, "__metatable");
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1))
+        return 1; /* return __metatable value */
+    lua_pop(L, 1);
+    return 1; /* return the metatable */
+}
+
+static int luaB_dofile(lua_State* L) {
+    const char* fname = luaL_optstring(L, 1, NULL);
+    int n = lua_gettop(L);
+    if (luaL_loadfile(L, fname) != 0)
+        return lua_error(L);
+    lua_call(L, 0, -1 /* LUA_MULTRET */);
+    return lua_gettop(L) - n;
+}
+
 static int luaB_collectgarbage(lua_State* L) {
     const char* opt = luaL_optstring(L, 1, "collect");
     if (strcmp(opt, "count") == 0) {
-        // G(L)->totalbytes is a size_t, divide by 1024 to get KB
         lua_pushnumber(L, (lua_Number)(L->l_G->totalbytes / 1024));
         return 1;
     }
@@ -6471,17 +6536,23 @@ return 1;
 static const luaL_Reg base_funcs[]={
 {"assert",luaB_assert},
 {"collectgarbage",luaB_collectgarbage},
+{"dofile",luaB_dofile},
 {"error",luaB_error},
+{"getmetatable",luaB_getmetatable},
 {"loadfile",luaB_loadfile},
 {"loadstring",luaB_loadstring},
 {"next",luaB_next},
 {"pcall",luaB_pcall},
 {"print",luaB_print},
-{"tostring",luaB_tostring},
+{"rawequal",luaB_rawequal},
 {"rawget",luaB_rawget},
+{"rawlen",luaB_rawlen},
+{"rawset",luaB_rawset},
+{"select",luaB_select},
 {"setfenv",luaB_setfenv},
 {"setmetatable",luaB_setmetatable},
 {"tonumber",luaB_tonumber},
+{"tostring",luaB_tostring},
 {"type",luaB_type},
 {"unpack",luaB_unpack},
 {NULL,NULL}
@@ -7048,9 +7119,23 @@ return os_pushresult(L,remove(filename)==0,filename);
 static int os_exit(lua_State*L){
 exit(luaL_optint(L,1,EXIT_SUCCESS));
 }
+static int os_clock(lua_State*L){
+extern uint32_t get_ticks(void);
+lua_pushnumber(L,(lua_Number)(get_ticks()/100));
+return 1;
+}
+static int os_time(lua_State*L){
+extern void rtc_read_time(uint8_t*,uint8_t*,uint8_t*);
+uint8_t h,m,s;
+rtc_read_time(&h,&m,&s);
+lua_pushnumber(L,(lua_Number)(h*3600+m*60+s));
+return 1;
+}
 static const luaL_Reg syslib[]={
+{"clock",os_clock},
 {"exit",os_exit},
 {"remove",os_remove},
+{"time",os_time},
 {NULL,NULL}
 };
 static int luaopen_os(lua_State*L){
@@ -7736,12 +7821,106 @@ luaL_register(L,"string",strlib);
 createmetatable(L);
 return 1;
 }
+
+/* --- Math library (integer-safe) --- */
+static unsigned long math_rng_state = 1;
+
+static int math_abs(lua_State*L){
+lua_Number x=luaL_checknumber(L,1);
+lua_pushnumber(L,x<0?-x:x);
+return 1;
+}
+static int math_max(lua_State*L){
+int n=lua_gettop(L);
+lua_Number m=luaL_checknumber(L,1);
+int i;
+for(i=2;i<=n;i++){
+lua_Number v=luaL_checknumber(L,i);
+if(v>m)m=v;
+}
+lua_pushnumber(L,m);
+return 1;
+}
+static int math_min(lua_State*L){
+int n=lua_gettop(L);
+lua_Number m=luaL_checknumber(L,1);
+int i;
+for(i=2;i<=n;i++){
+lua_Number v=luaL_checknumber(L,i);
+if(v<m)m=v;
+}
+lua_pushnumber(L,m);
+return 1;
+}
+static int math_floor(lua_State*L){
+lua_pushnumber(L,luaL_checknumber(L,1));
+return 1;
+}
+static int math_ceil(lua_State*L){
+lua_pushnumber(L,luaL_checknumber(L,1));
+return 1;
+}
+static int math_random(lua_State*L){
+int lo,hi;
+math_rng_state=math_rng_state*6364136223846793005UL+1442695040888963407UL;
+unsigned long r=(math_rng_state>>33);
+switch(lua_gettop(L)){
+case 0:
+lua_pushnumber(L,(lua_Number)(r%1000));
+return 1;
+case 1:
+hi=luaL_checkint(L,1);
+if(hi<1)luaL_argerror(L,1,"interval is empty");
+lua_pushnumber(L,(lua_Number)(1+(int)(r%(unsigned long)hi)));
+return 1;
+default:
+lo=luaL_checkint(L,1);
+hi=luaL_checkint(L,2);
+if(lo>hi)luaL_argerror(L,2,"interval is empty");
+lua_pushnumber(L,(lua_Number)(lo+(int)(r%(unsigned long)(hi-lo+1))));
+return 1;
+}
+}
+static int math_randomseed(lua_State*L){
+math_rng_state=(unsigned long)luaL_checknumber(L,1);
+return 0;
+}
+static int math_fmod(lua_State*L){
+lua_Number a=luaL_checknumber(L,1);
+lua_Number b=luaL_checknumber(L,2);
+if(b==0)luaL_argerror(L,2,"zero");
+lua_pushnumber(L,a%b);
+return 1;
+}
+static const luaL_Reg mathlib[]={
+{"abs",math_abs},
+{"ceil",math_ceil},
+{"floor",math_floor},
+{"fmod",math_fmod},
+{"max",math_max},
+{"min",math_min},
+{"random",math_random},
+{"randomseed",math_randomseed},
+{NULL,NULL}
+};
+static int luaopen_math(lua_State*L){
+luaL_register(L,"math",mathlib);
+lua_pushnumber(L,2147483647);
+lua_setfield(L,-2,"huge");
+lua_pushnumber(L,3);
+lua_setfield(L,-2,"pi");
+lua_pushnumber(L,2147483647);
+lua_setfield(L,-2,"maxinteger");
+return 1;
+}
+
 static const luaL_Reg lualibs[]={
 {"",luaopen_base},
 {"table",luaopen_table},
 {"io",luaopen_io},
 {"os",luaopen_os},
 {"string",luaopen_string},
+{"math",luaopen_math},
 {NULL,NULL}
 };
 static void luaL_openlibs(lua_State*L){
