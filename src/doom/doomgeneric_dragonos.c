@@ -49,34 +49,46 @@ void doom_handle_keyboard_raw(uint8_t scancode) {
     unsigned char doom_key = 0;
     
     switch (code) {
-        case 0x01: doom_key = 27; break; // Esc -> escape
-        case 0x1C: doom_key = 13; break; // Enter -> enter
-        case 0x39: doom_key = ' '; break; // Space -> use
-        case 0x1D: doom_key = 0xa0; break; // Left Ctrl -> fire (ctrl)
-        case 0x2A: doom_key = 0xa1; break; // Left Shift -> run (shift)
-        
+        case 0x01: doom_key = 27; break;   // Esc -> escape
+        case 0x1C: doom_key = 13; break;   // Enter -> enter
+        case 0x39: doom_key = 0xa2; break; // Space -> use (KEY_USE)
+        case 0x1D: doom_key = 0xa3; break; // Left Ctrl -> fire (KEY_FIRE)
+        case 0x2A: doom_key = 0xb6; break; // Left Shift -> run (KEY_RSHIFT)
+        case 0x0E: doom_key = 0x7f; break; // Backspace
+        case 0x0F: doom_key = 9; break;    // Tab -> map
+
+        // Weapon switching (1-9, 0)
+        case 0x02: doom_key = '1'; break;
+        case 0x03: doom_key = '2'; break;
+        case 0x04: doom_key = '3'; break;
+        case 0x05: doom_key = '4'; break;
+        case 0x06: doom_key = '5'; break;
+        case 0x07: doom_key = '6'; break;
+        case 0x08: doom_key = '7'; break;
+        case 0x09: doom_key = '8'; break;
+        case 0x0a: doom_key = '9'; break;
+        case 0x0b: doom_key = '0'; break;
+
         // WASD
         case 0x11: doom_key = 'W'; break;
         case 0x1E: doom_key = 'A'; break;
         case 0x1F: doom_key = 'S'; break;
         case 0x20: doom_key = 'D'; break;
         case 0x12: doom_key = 'E'; break; // use
-        
+
         // Arrow Keys
         case 0x48: doom_key = 0xad; break; // Up Arrow
         case 0x50: doom_key = 0xaf; break; // Down Arrow
         case 0x4B: doom_key = 0xac; break; // Left Arrow
         case 0x4D: doom_key = 0xae; break; // Right Arrow
-        
+
         default: break;
     }
-    
     e0_received = 0;
     if (doom_key != 0) {
         push_doom_key(pressed, doom_key);
     }
 }
-
 // Doom Generic callbacks
 void DG_Init() {
     print_serial("[Doom] DG_Init called.\n");
@@ -111,10 +123,16 @@ void DG_DrawFrame() {
 }
 
 void DG_SleepMs(uint32_t ms) {
-    // Use the kernel timer to sleep
+    if (ms == 0) return;
+    if (ms < 10) {
+        // High-precision pause loop for sub-tick sleeps
+        for (volatile uint32_t i = 0; i < ms * 10000; i++) {
+            __asm__ volatile("pause");
+        }
+        return;
+    }
     uint32_t start = get_ticks();
-    uint32_t ticks_to_wait = ms / 10; // PIT runs at 100Hz (10ms per tick)
-    if (ticks_to_wait == 0) ticks_to_wait = 1;
+    uint32_t ticks_to_wait = ms / 10;
     while (get_ticks() - start < ticks_to_wait) {
         __asm__ volatile("pause");
     }

@@ -193,9 +193,8 @@ void kernel_main(void) {
         if (doom_running) {
             extern void doomgeneric_Tick(void);
             doomgeneric_Tick();
-        } else {
-            gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
-            gui_draw();
         }
+        gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
+        gui_draw();
     }
 }
