@@ -49,4 +49,7 @@ int stat(const char* pathname, struct stat* statbuf);
 int fstat(int fd, struct stat* statbuf);
 int access(const char* pathname, int mode);
 
+int vfs_get_count(void);
+struct vfs_node* vfs_get_node(int index);
+
 #endif

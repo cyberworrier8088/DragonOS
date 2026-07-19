@@ -232,6 +232,18 @@ void init_gui(void) {
     windows[4].dragging = 0;
     windows[4].id = 4;
 
+    /* 5: File Explorer */
+    windows[5].x = 160;
+    windows[5].y = 120;
+    windows[5].w = 460;
+    windows[5].h = 300;
+    strcpy(windows[5].title, "File Explorer");
+    windows[5].active = 0;
+    windows[5].closed = 1;
+    windows[5].minimized = 0;
+    windows[5].dragging = 0;
+    windows[5].id = 5;
+
     doom_window_buffer = (uint32_t*)kmalloc(640 * 400 * 4);
 
     /* Initialize terminal buffer */
@@ -339,15 +351,16 @@ static void draw_window_chrome(gui_window_t* win) {
  * ============================================================ */
 static void draw_desktop_icons(void) {
     /* Icon layout: vertical stack on left side */
-    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[5] = {
+    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[6] = {
         {"System",   0x0078D4, 0xFFFFFF, "PC"},
         {"Terminal", 0x0C0C0C, 0x00FF00, ">_"},
         {"Calc",     0x202020, 0xFFFFFF, "+-"},
         {"Monitor",  0x1A1A1A, 0x00CC6A, "/\\"},
         {"DOOM",     0xC21807, 0xFFFFFF, "DM"},
+        {"Explorer", 0xDF8A10, 0xFFFFFF, "FE"},
     };
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         int ix = 30;
         int iy = 30 + i * 90;
 
@@ -565,6 +578,68 @@ static void draw_window_content(gui_window_t* win) {
             draw_string(x + w/2 - 40, content_y + h/2 - 8, "Loading DOOM...", 0xFFFFFF);
         }
     }
+    else if (win->id == 5) {
+        /* ---- File Explorer (Windows 11 Fluent style) ---- */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x1E1E1E);
+
+        /* Left Sidebar (Frosted-like dark grey) */
+        draw_rect(x + 1, content_y, 110, content_h - 1, 0x252525);
+        draw_vline(x + 111, content_y, content_h - 1, 0x2D2D2D);
+
+        /* Sidebar shortcuts */
+        draw_string(x + 12, content_y + 16, " Quick Access", 0x888888);
+        
+        draw_rounded_rect(x + 8, content_y + 36, 96, 22, 4, 0x333333);
+        draw_string(x + 12, content_y + 40, " Home", 0x60CDFF);
+        
+        draw_string(x + 12, content_y + 68, " Desktop", 0xCCCCCC);
+        draw_string(x + 12, content_y + 96, " Documents", 0xCCCCCC);
+        draw_string(x + 12, content_y + 124, " Downloads", 0xCCCCCC);
+        draw_string(x + 12, content_y + 152, " Local Disk (C:)", 0xCCCCCC);
+
+        /* Address Bar */
+        draw_rounded_rect(x + 120, content_y + 8, w - 132, 22, 4, 0x2B2B2B);
+        draw_rounded_rect_outline(x + 120, content_y + 8, w - 132, 22, 4, 0x3D3D3D);
+        draw_string(x + 128, content_y + 11, "This PC > Local Disk (C:)", 0xCCCCCC);
+
+        /* Main View Header */
+        draw_string(x + 124, content_y + 38, "Name", 0x888888);
+        draw_string(x + 350, content_y + 38, "Size", 0x888888);
+        draw_hline(x + 120, content_y + 54, w - 132, 0x2D2D2D);
+
+        /* Directory listing from VFS */
+        extern int vfs_get_count(void);
+        typedef struct {
+            char name[32];
+            int size;
+        } mock_vfs_node_t;
+        extern mock_vfs_node_t* vfs_get_node(int index);
+
+        int count = vfs_get_count();
+        if (count > 7) count = 7; // Cap layout to fit window bounds
+        
+        for (int i = 0; i < count; i++) {
+            mock_vfs_node_t* node = vfs_get_node(i);
+            if (!node) continue;
+            
+            int ry = content_y + 60 + i * 26;
+
+            /* File Icon (Fluent Orange folder) */
+            draw_rounded_rect(x + 124, ry, 18, 16, 3, 0xDF8A10);
+            draw_rect(x + 126, ry - 2, 8, 4, 0xDF8A10); // folder tab
+            
+            /* File Name */
+            draw_string(x + 148, ry + 1, node->name, 0xFFFFFF);
+
+            /* File Size */
+            char size_str[32];
+            char num_buf[16];
+            int_to_ascii(node->size, num_buf);
+            strcpy(size_str, num_buf);
+            strcat(size_str, " B");
+            draw_string(x + 350, ry + 1, size_str, 0x888888);
+        }
+    }
 }
 
 /* ============================================================
@@ -682,7 +757,7 @@ void gui_draw(void) {
     draw_hline(12, tby + 2, screen_width - 24, 0x333333);
 
     /* Centered app icons */
-    int icon_count = 6; /* Start + 5 apps */
+    int icon_count = 7; /* Start + 6 apps */
     int icon_size = 32;
     int icon_gap = 6;
     int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
@@ -696,8 +771,8 @@ void gui_draw(void) {
     draw_win11_logo(start_x + icon_size / 2, start_y + icon_size / 2, WIN11_ACCENT_LIGHT);
 
     /* App taskbar icons */
-    uint32_t app_icon_colors[5] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A, 0xC21807};
-    char* app_icon_syms[5] = {"PC", ">_", "+-", "/\\", "DM"};
+    uint32_t app_icon_colors[6] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A, 0xC21807, 0xDF8A10};
+    char* app_icon_syms[6] = {"PC", ">_", "+-", "/\\", "DM", "FE"};
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         gui_window_t* w = &windows[i];
@@ -856,7 +931,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         int tby = (int)screen_height - tb_h;
 
         /* Taskbar centered icon clicks */
-        int icon_count = 5;
+        int icon_count = 7;
         int icon_size = 32;
         int icon_gap = 6;
         int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
@@ -938,7 +1013,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         /* Desktop icon clicks */
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             int ix = 30;
             int iy = 30 + i * 90;
             if (mx >= ix && mx < ix + 48 && my >= iy && my < iy + 70) {

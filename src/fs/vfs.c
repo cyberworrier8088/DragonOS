@@ -311,3 +311,14 @@ int access(const char* pathname, int mode) {
     }
     return -1;
 }
+
+int vfs_get_count(void) {
+    return vfs_node_count;
+}
+
+vfs_node_t* vfs_get_node(int index) {
+    if (index >= 0 && index < vfs_node_count) {
+        return &vfs_nodes[index];
+    }
+    return NULL;
+}

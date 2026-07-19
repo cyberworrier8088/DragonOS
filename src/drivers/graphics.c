@@ -1,6 +1,7 @@
 #include "graphics.h"
 #include "../libc/font_segoe.h"
 #include "../libc/string.h"
+#include "../mm/kheap.h"
 
 #define MAX_WIDTH 1280
 #define MAX_HEIGHT 1024
@@ -317,6 +318,46 @@ static int wallpaper_rendered = 0;
 
 void draw_desktop_gradient(void) {
     if (wallpaper_rendered) {
+        memcpy(back_buffer, wallpaper_buffer, screen_width * screen_height * 4);
+        return;
+    }
+
+    int loaded_wallpaper = 0;
+    
+    // Try to load the raw BMP wallpaper if the resolution matches
+    if (screen_width == 1024 && screen_height == 768) {
+        extern int open(const char* filename, int flags);
+        extern int read(int fd, void* buf, int nbytes);
+        extern int close(int fd);
+        
+        int fd = open("/boot/wallpaper.bmp", 0);
+        if (fd >= 0) {
+            uint8_t header[54];
+            if (read(fd, header, 54) == 54) {
+                uint8_t* row_data = (uint8_t*)kmalloc(1024 * 3);
+                if (row_data) {
+                    loaded_wallpaper = 1;
+                    for (int y = 767; y >= 0; y--) {
+                        if (read(fd, row_data, 1024 * 3) != 1024 * 3) {
+                            loaded_wallpaper = 0;
+                            break;
+                        }
+                        for (int x = 0; x < 1024; x++) {
+                            uint8_t b = row_data[x * 3];
+                            uint8_t g = row_data[x * 3 + 1];
+                            uint8_t r = row_data[x * 3 + 2];
+                            wallpaper_buffer[y * 1024 + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+                        }
+                    }
+                    kfree(row_data);
+                }
+            }
+            close(fd);
+        }
+    }
+
+    if (loaded_wallpaper) {
+        wallpaper_rendered = 1;
         memcpy(back_buffer, wallpaper_buffer, screen_width * screen_height * 4);
         return;
     }

@@ -110,6 +110,7 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
 	cp limine-bin/limine-bios.sys isodir/boot/
 	cp limine-bin/limine-bios-cd.bin isodir/boot/
 	cp limine-bin/limine-uefi-cd.bin isodir/boot/
+	cp wallpaper.bmp isodir/boot/
 	xorriso -as mkisofs \
 		-b boot/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table \
