@@ -8,6 +8,7 @@
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
 #include "../drivers/pci.h"
+#include "fs/vfs.h"
 
 #include "../libc/stdlib.h"
 
@@ -135,6 +136,9 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string("  ticks       Show system timer ticks\n");
         gui_write_string("  ping        Test command response\n");
         gui_write_string("  echo <msg>  Echo input text back\n");
+        gui_write_string("  ls          List mounted VFS files\n");
+        gui_write_string("  cat <file>  Print file content\n");
+        gui_write_string("  stat <file> Print file metadata\n");
         gui_write_string("  reboot      Reboot the computer\n");
         gui_write_string("  halt        Halt the CPU safely\n");
     } else if (strcmp(cmd, "about") == 0) {
@@ -156,6 +160,58 @@ static void gui_execute_command(const char* cmd) {
     } else if (strncmp(cmd, "echo ", 5) == 0) {
         gui_write_string(cmd + 5);
         gui_write_string("\n");
+    } else if (strcmp(cmd, "ls") == 0) {
+        extern int vfs_get_count(void);
+        extern vfs_node_t* vfs_get_node(int index);
+        int count = vfs_get_count();
+        gui_write_string("VFS Mounted Nodes:\n");
+        for (int i = 0; i < count; i++) {
+            vfs_node_t* node = vfs_get_node(i);
+            if (node) {
+                gui_write_string("  ");
+                gui_write_string(node->name);
+                gui_write_string(" (");
+                char size_str[32];
+                int_to_ascii(node->size, size_str);
+                gui_write_string(size_str);
+                gui_write_string(" B)\n");
+            }
+        }
+    } else if (strncmp(cmd, "cat ", 4) == 0) {
+        const char* filepath = cmd + 4;
+        while (*filepath == ' ') filepath++;
+        int fd = open(filepath, 0);
+        if (fd >= 0) {
+            char read_buf[256];
+            int bytes;
+            while ((bytes = read(fd, read_buf, 255)) > 0) {
+                read_buf[bytes] = '\0';
+                gui_write_string(read_buf);
+            }
+            close(fd);
+            gui_write_string("\n");
+        } else {
+            gui_write_string("cat: error opening file: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        }
+    } else if (strncmp(cmd, "stat ", 5) == 0) {
+        const char* filepath = cmd + 5;
+        while (*filepath == ' ') filepath++;
+        struct stat st;
+        if (stat(filepath, &st) == 0) {
+            gui_write_string("File: ");
+            gui_write_string(filepath);
+            gui_write_string("\nSize: ");
+            char size_str[32];
+            int_to_ascii((int)st.st_size, size_str);
+            gui_write_string(size_str);
+            gui_write_string(" Bytes\nMode: S_IFREG\n");
+        } else {
+            gui_write_string("stat: cannot find file: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        }
     } else if (strcmp(cmd, "reboot") == 0) {
         gui_write_string("Rebooting...\n");
         outb(0x64, 0xFE);
@@ -607,19 +663,11 @@ static void draw_window_content(gui_window_t* win) {
         draw_string(x + 350, content_y + 38, "Size", 0x888888);
         draw_hline(x + 120, content_y + 54, w - 132, 0x2D2D2D);
 
-        /* Directory listing from VFS */
-        extern int vfs_get_count(void);
-        typedef struct {
-            char name[32];
-            int size;
-        } mock_vfs_node_t;
-        extern mock_vfs_node_t* vfs_get_node(int index);
-
         int count = vfs_get_count();
         if (count > 7) count = 7; // Cap layout to fit window bounds
         
         for (int i = 0; i < count; i++) {
-            mock_vfs_node_t* node = vfs_get_node(i);
+            vfs_node_t* node = vfs_get_node(i);
             if (!node) continue;
             
             int ry = content_y + 60 + i * 26;
@@ -1150,6 +1198,40 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                         }
                     }
                 }
+                
+                /* File Explorer clicks */
+                if (win->id == 5) {
+                    int content_y = win->y + 32;
+                    if (mx >= win->x + 120 && mx < win->x + win->w && my >= content_y + 60 && my < content_y + 60 + 7 * 26) {
+                        int clicked_row = (my - (content_y + 60)) / 26;
+                        int count = vfs_get_count();
+                        if (clicked_row >= 0 && clicked_row < count) {
+                            vfs_node_t* node = vfs_get_node(clicked_row);
+                            if (node) {
+                                // If clicked doom1.wad, launch Doom!
+                                if (strcmp(node->name, "doom1.wad") == 0 || strcmp(node->name, "/boot/doom1.wad") == 0) {
+                                    win->closed = 1;
+                                    active_win_id = 4;
+                                    windows[4].closed = 0;
+                                    windows[4].minimized = 0;
+                                    
+                                    if (!doom_running) {
+                                        extern void doomgeneric_Create(int argc, char** argv);
+                                        char* doom_argv[] = {"doomgeneric", "-iwad", "/boot/doom1.wad"};
+                                        print_serial("[Doom] Launching game loop via setjmp...\n");
+                                        if (setjmp(doom_exit_jmp) == 0) {
+                                            doom_running = 1;
+                                            doomgeneric_Create(3, doom_argv);
+                                        } else {
+                                            print_serial("[Doom] Gracefully returned to desktop.\n");
+                                        }
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
                 return;
             }
         }
@@ -1175,6 +1257,7 @@ void gui_handle_keyboard(char c) {
         if (cmd_buf_idx > 0) {
             cmd_buf_idx--;
             command_buffer[cmd_buf_idx] = '\0';
+            gui_write_char('\b');
         }
     } else {
         if (cmd_buf_idx < 120) {

@@ -91,54 +91,85 @@ static int sys_meminfo_read(vfs_node_t* node, uint32_t node_offset, uint32_t siz
 }
 
 static int dev_sda_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
-    (void)node;
-    uint32_t lba = offset / 512;
-    uint32_t count = (size + 511) / 512;
-    if (count == 0) count = 1;
-    
-    void* temp = kmalloc(count * 512);
-    if (!temp) return -1;
-    
-    extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
-    if (ata_read_sectors(lba, count, (uint32_t*)temp) < 0) {
-        kfree(temp);
-        return -1;
+    if (size == 0) return 0;
+    if (offset + size > (uint32_t)node->size) {
+        if (offset >= (uint32_t)node->size) return 0;
+        size = (uint32_t)node->size - offset;
     }
-    
-    uint32_t off_in_sector = offset % 512;
-    memcpy(buffer, (uint8_t*)temp + off_in_sector, size);
-    kfree(temp);
-    return size;
+
+    uint32_t bytes_read = 0;
+    while (bytes_read < size) {
+        uint32_t chunk_offset = offset + bytes_read;
+        uint32_t chunk_size = size - bytes_read;
+        if (chunk_size > 32768) {
+            chunk_size = 32768;
+        }
+
+        uint32_t lba = chunk_offset / 512;
+        uint32_t end_lba = (chunk_offset + chunk_size - 1) / 512;
+        uint32_t count = end_lba - lba + 1;
+
+        void* temp = kmalloc(count * 512);
+        if (!temp) return bytes_read > 0 ? (int)bytes_read : -1;
+
+        extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
+        if (ata_read_sectors(lba, (uint8_t)count, (uint32_t*)temp) < 0) {
+            kfree(temp);
+            return bytes_read > 0 ? (int)bytes_read : -1;
+        }
+
+        uint32_t off_in_sector = chunk_offset % 512;
+        memcpy(buffer + bytes_read, (uint8_t*)temp + off_in_sector, chunk_size);
+        kfree(temp);
+
+        bytes_read += chunk_size;
+    }
+    return (int)bytes_read;
 }
 
 static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
-    (void)node;
-    uint32_t lba = offset / 512;
-    uint32_t count = (size + 511) / 512;
-    if (count == 0) count = 1;
-    
-    void* temp = kmalloc(count * 512);
-    if (!temp) return -1;
-    
-    extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
-    if (offset % 512 != 0 || size < count * 512) {
-        if (ata_read_sectors(lba, count, (uint32_t*)temp) < 0) {
-            kfree(temp);
-            return -1;
+    if (size == 0) return 0;
+    if (offset + size > (uint32_t)node->size) {
+        if (offset >= (uint32_t)node->size) return -1;
+        size = (uint32_t)node->size - offset;
+    }
+
+    uint32_t bytes_written = 0;
+    while (bytes_written < size) {
+        uint32_t chunk_offset = offset + bytes_written;
+        uint32_t chunk_size = size - bytes_written;
+        if (chunk_size > 32768) {
+            chunk_size = 32768;
         }
-    }
-    
-    uint32_t off_in_sector = offset % 512;
-    memcpy((uint8_t*)temp + off_in_sector, buffer, size);
-    
-    extern int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer);
-    if (ata_write_sectors(lba, count, (const uint32_t*)temp) < 0) {
+
+        uint32_t lba = chunk_offset / 512;
+        uint32_t end_lba = (chunk_offset + chunk_size - 1) / 512;
+        uint32_t count = end_lba - lba + 1;
+
+        void* temp = kmalloc(count * 512);
+        if (!temp) return bytes_written > 0 ? (int)bytes_written : -1;
+
+        extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
+        if ((chunk_offset % 512 != 0) || (chunk_size < count * 512)) {
+            if (ata_read_sectors(lba, (uint8_t)count, (uint32_t*)temp) < 0) {
+                kfree(temp);
+                return bytes_written > 0 ? (int)bytes_written : -1;
+            }
+        }
+
+        uint32_t off_in_sector = chunk_offset % 512;
+        memcpy((uint8_t*)temp + off_in_sector, buffer + bytes_written, chunk_size);
+
+        extern int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer);
+        if (ata_write_sectors(lba, (uint8_t)count, (const uint32_t*)temp) < 0) {
+            kfree(temp);
+            return bytes_written > 0 ? (int)bytes_written : -1;
+        }
+
         kfree(temp);
-        return -1;
+        bytes_written += chunk_size;
     }
-    
-    kfree(temp);
-    return size;
+    return (int)bytes_written;
 }
 
 void init_vfs(void) {
