@@ -21,6 +21,7 @@ OBJS = boot.o \
        src/libc/string.o \
        src/mm/pmm.o \
        src/mm/kheap.o \
+       src/mm/paging.o \
        src/shell/shell.o \
        src/shell/gui.o \
        kernel.o
@@ -67,9 +68,12 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine
 	cp limine.conf isodir/boot/
 	cp limine-bin/limine-bios.sys isodir/boot/
 	cp limine-bin/limine-bios-cd.bin isodir/boot/
+	cp limine-bin/limine-uefi-cd.bin isodir/boot/
 	xorriso -as mkisofs \
 		-b boot/limine-bios-cd.bin \
 		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		--efi-boot boot/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
 		-o $@ isodir
 	./limine-bin/limine bios-install $@
 

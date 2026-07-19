@@ -14,6 +14,8 @@ uint32_t  screen_pitch = 800 * 4;
 static uint32_t back_buffer_storage[MAX_WIDTH * MAX_HEIGHT];
 uint32_t* back_buffer = back_buffer_storage;
 
+static uint8_t hdr_lut[256];
+
 void graphics_init(uint64_t phys_addr, uint32_t width, uint32_t height, uint32_t pitch) {
     framebuffer = (uint32_t*)phys_addr;
 
@@ -21,6 +23,14 @@ void graphics_init(uint64_t phys_addr, uint32_t width, uint32_t height, uint32_t
     screen_width = (width > MAX_WIDTH) ? MAX_WIDTH : width;
     screen_height = (height > MAX_HEIGHT) ? MAX_HEIGHT : height;
     screen_pitch = pitch;
+
+    /* Initialize HDR ACES Filmic approximation LUT */
+    for (int i = 0; i < 256; i++) {
+        int val = (i * 12) / 10; // Boost exposure by 1.2x
+        if (val > 255) val = 255;
+        // Cubic sigmoid S-curve for high dynamic contrast
+        hdr_lut[i] = (val * val * (765 - 2 * val)) / 65025;
+    }
 
     memset(back_buffer, 0, screen_width * screen_height * 4);
 }
@@ -372,11 +382,17 @@ void draw_desktop_gradient(void) {
 
 void blit_buffer(void) {
     if (framebuffer) {
-        /* Row-by-row copy respecting pitch differences */
-        uint32_t row_bytes = screen_width * 4;
         uint32_t pitch_pixels = screen_pitch / 4;
         for (uint32_t y = 0; y < screen_height; y++) {
-            memcpy(&framebuffer[y * pitch_pixels], &back_buffer[y * screen_width], row_bytes);
+            uint32_t* dest = &framebuffer[y * pitch_pixels];
+            uint32_t* src = &back_buffer[y * screen_width];
+            for (uint32_t x = 0; x < screen_width; x++) {
+                uint32_t color = src[x];
+                uint8_t r = hdr_lut[(color >> 16) & 0xFF];
+                uint8_t g = hdr_lut[(color >> 8) & 0xFF];
+                uint8_t b = hdr_lut[color & 0xFF];
+                dest[x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+            }
         }
     }
 }

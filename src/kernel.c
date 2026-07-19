@@ -7,6 +7,7 @@
 #include "shell/gui.h"
 #include "mm/pmm.h"
 #include "mm/kheap.h"
+#include "mm/paging.h"
 #include "../limine-bin/limine.h"
 
 // Set the base revision to 4
@@ -78,6 +79,16 @@ void kernel_main(void) {
         pmm_init(memmap_request.response, hhdm_request.response->offset);
         kheap_init();
         print_serial("[DragonOS] Physical Memory Manager and Kernel Heap initialized.\n");
+        
+        init_paging();
+        // Test Paging by mapping 0x1000000000 -> 0x1000000 physical
+        paging_map(0x1000000000ULL, 0x1000000ULL, PAGE_PRESENT | PAGE_WRITE | PAGE_USER);
+        uint64_t walk = paging_walk(0x1000000000ULL);
+        if ((walk & ~0xFFFULL) == 0x1000000ULL) {
+            print_serial("[DragonOS] Paging Test SUCCESS: 64-bit page mapped dynamically!\n");
+        } else {
+            print_serial("[DragonOS] Paging Test FAILED!\n");
+        }
     } else {
         print_serial("[DragonOS] Error: Limine did not provide a memory map or HHDM!\n");
     }
