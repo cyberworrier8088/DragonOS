@@ -7,6 +7,7 @@
 #include "shell.h"
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
+#include "../drivers/pci.h"
 
 gui_window_t* windows;
 int active_win_id = -1;
@@ -170,8 +171,8 @@ void init_gui(void) {
     /* 0: Computer */
     windows[0].x = 80;
     windows[0].y = 60;
-    windows[0].w = 320;
-    windows[0].h = 200;
+    windows[0].w = 360;
+    windows[0].h = 280;
     strcpy(windows[0].title, "System Information");
     windows[0].active = 0;
     windows[0].closed = 1;
@@ -367,6 +368,24 @@ static void draw_window_content(gui_window_t* win) {
         draw_rounded_rect_outline(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BORDER);
         draw_string(x + 22, content_y + 102, "System", WIN11_ACCENT);
         draw_string(x + 22, content_y + 118, "DragonOS 64-bit Limine", WIN11_TEXT_PRIMARY);
+
+        /* PCI Devices card */
+        draw_rounded_rect(x + 12, content_y + 144, w - 24, 90, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 144, w - 24, 90, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 146, "PCI Hardware", WIN11_ACCENT);
+
+        int line_offset = 0;
+        pci_device_t* curr = pci_devices_head;
+        while (curr && line_offset < 4) {
+            char pci_str[64];
+            strcpy(pci_str, curr->class_name);
+            draw_string(x + 22, content_y + 162 + line_offset * 14, pci_str, WIN11_TEXT_PRIMARY);
+            curr = curr->next;
+            line_offset++;
+        }
+        if (line_offset == 0) {
+            draw_string(x + 22, content_y + 162, "No devices scanned.", WIN11_TEXT_PRIMARY);
+        }
     }
     else if (win->id == 1) {
         /* ---- Terminal ---- */

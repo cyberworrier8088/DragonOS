@@ -22,6 +22,8 @@ OBJS = boot.o \
        src/mm/pmm.o \
        src/mm/kheap.o \
        src/mm/paging.o \
+       src/drivers/pci.o \
+       src/fs/vfs.o \
        src/shell/shell.o \
        src/shell/gui.o \
        kernel.o
@@ -44,6 +46,9 @@ src/libc/%.o: src/libc/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 src/shell/%.o: src/shell/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+src/fs/%.o: src/fs/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 boot.o: src/boot.asm

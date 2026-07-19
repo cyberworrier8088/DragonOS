@@ -8,6 +8,8 @@
 #include "mm/pmm.h"
 #include "mm/kheap.h"
 #include "mm/paging.h"
+#include "drivers/pci.h"
+#include "fs/vfs.h"
 #include "../limine-bin/limine.h"
 
 // Set the base revision to 4
@@ -97,6 +99,27 @@ void kernel_main(void) {
     register_interrupt_handler(44, mouse_handler);
     init_mouse();
     print_serial("[DragonOS] PS/2 mouse interface initialized.\n");
+
+    /* Initialize PCI Bus scanner */
+    pci_init();
+
+    /* Initialize POSIX VFS */
+    init_vfs();
+
+    // Verify POSIX VFS & File Descriptors
+    int fd = open("/sys/meminfo", 0);
+    if (fd >= 0) {
+        char buf[256];
+        int bytes = read(fd, buf, sizeof(buf) - 1);
+        if (bytes > 0) {
+            buf[bytes] = '\0';
+            print_serial("[DragonOS] POSIX VFS Test SUCCESS: Read /sys/meminfo contents:\n");
+            write(2, buf, bytes); // write to stderr (2)
+        }
+        close(fd);
+    } else {
+        print_serial("[DragonOS] POSIX VFS Test FAILED: Could not open /sys/meminfo\n");
+    }
 
     /* Initialize Window Manager GUI */
     init_gui();
