@@ -120,13 +120,13 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
 	./limine-bin/limine bios-install $@
 
 run: dragonos.iso
-	qemu-system-x86_64 -cdrom dragonos.iso
+	qemu-system-x86_64 -m 2G -cdrom dragonos.iso
 
 run-curses: dragonos.iso
-	qemu-system-x86_64 -cdrom dragonos.iso -display curses
+	qemu-system-x86_64 -m 2G -cdrom dragonos.iso -display curses
 
 run-nographic: dragonos.iso
-	qemu-system-x86_64 -cdrom dragonos.iso -nographic -serial mon:stdio
+	qemu-system-x86_64 -m 2G -cdrom dragonos.iso -nographic -serial mon:stdio
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir

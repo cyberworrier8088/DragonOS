@@ -70,11 +70,15 @@ void doom_handle_keyboard_raw(uint8_t scancode) {
         case 0x0b: doom_key = '0'; break;
 
         // WASD
-        case 0x11: doom_key = 'W'; break;
-        case 0x1E: doom_key = 'A'; break;
-        case 0x1F: doom_key = 'S'; break;
-        case 0x20: doom_key = 'D'; break;
-        case 0x12: doom_key = 'E'; break; // use
+        case 0x11: doom_key = 'w'; break;
+        case 0x1E: doom_key = 'a'; break;
+        case 0x1F: doom_key = 's'; break;
+        case 0x20: doom_key = 'd'; break;
+        case 0x12: doom_key = 'e'; break; // use
+
+        // Menu Y/N prompts
+        case 0x15: doom_key = 'y'; break;
+        case 0x31: doom_key = 'n'; break;
 
         // Arrow Keys
         case 0x48: doom_key = 0xad; break; // Up Arrow
