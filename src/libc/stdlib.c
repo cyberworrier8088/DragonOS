@@ -43,6 +43,10 @@ void exit(int status) {
             windows[4].closed = 1;
             windows[4].minimized = 0;
         }
+        extern int active_win_id;
+        active_win_id = -1;
+        extern int gui_was_clicked;
+        gui_was_clicked = 0;
         longjmp(doom_exit_jmp, 1);
     }
     // Standard system halt

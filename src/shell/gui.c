@@ -1262,6 +1262,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                             doomgeneric_Create(3, doom_argv);
                                         } else {
                                             print_serial("[Doom] Gracefully returned to desktop.\n");
+                                            active_win_id = -1;
                                             gui_was_clicked = 0;
                                         }
                                     }
