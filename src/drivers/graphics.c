@@ -370,6 +370,74 @@ void draw_desktop_gradient(void) {
                 if (b > 255) b = 255;
             }
 
+            /* Draw stylized glowing abstract Dragon emblem in the center */
+            int logo_x = dx;
+            int logo_y = dy;
+            
+            // Central diamond: |x| + |y| < 24
+            int abs_x = (logo_x < 0) ? -logo_x : logo_x;
+            int abs_y = (logo_y < 0) ? -logo_y : logo_y;
+            if (abs_x + abs_y < 24) {
+                int intensity = (24 - (abs_x + abs_y)) * 255 / 24;
+                r = r + intensity * 150 / 255;
+                g = g + intensity * 40 / 255;
+                b = b + intensity * 240 / 255;
+                if (r > 255) r = 255;
+                if (g > 255) g = 255;
+                if (b > 255) b = 255;
+            }
+            
+            // Wing curves: sweeping parabolic wings extending left and right
+            if (abs_x > 15 && abs_x < 140) {
+                int wing_center_y = (abs_x * abs_x) * 15 / 1000 - 15;
+                int dy_wing = logo_y - wing_center_y;
+                int abs_dy_wing = (dy_wing < 0) ? -dy_wing : dy_wing;
+                if (abs_dy_wing < 8) {
+                    int intensity = (8 - abs_dy_wing) * 255 / 8;
+                    // Fade out towards tips
+                    intensity = intensity * (140 - abs_x) / 125;
+                    r = r + intensity * 40 / 255;
+                    g = g + intensity * 160 / 255;
+                    b = b + intensity * 255 / 255;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+                    if (b > 255) b = 255;
+                }
+            }
+            
+            // Upper head/horns crest
+            if (abs_x < 45) {
+                int horn_center_y = -(abs_x * abs_x) * 35 / 1000 - 30;
+                int dy_horn = logo_y - horn_center_y;
+                int abs_dy_horn = (dy_horn < 0) ? -dy_horn : dy_horn;
+                if (abs_dy_horn < 5) {
+                    int intensity = (5 - abs_dy_horn) * 255 / 5;
+                    intensity = intensity * (45 - abs_x) / 45;
+                    r = r + intensity * 180 / 255;
+                    g = g + intensity * 30 / 255;
+                    b = b + intensity * 255 / 255;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+                    if (b > 255) b = 255;
+                }
+            }
+            
+            // Tail hook below
+            if (logo_x > -35 && logo_x < 35) {
+                int tail_center_y = (logo_x * logo_x) * 45 / 1000 + 35;
+                int dy_tail = logo_y - tail_center_y;
+                int abs_dy_tail = (dy_tail < 0) ? -dy_tail : dy_tail;
+                if (abs_dy_tail < 5) {
+                    int intensity = (5 - abs_dy_tail) * 255 / 5;
+                    r = r + intensity * 20 / 255;
+                    g = g + intensity * 200 / 255;
+                    b = b + intensity * 220 / 255;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+                    if (b > 255) b = 255;
+                }
+            }
+
             wallpaper_buffer[y * screen_width + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
         }
     }
