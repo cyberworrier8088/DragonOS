@@ -99,7 +99,5 @@ void kernel_main(void) {
     while (1) {
         gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
         gui_draw();
-        // Pace drawing loop
-        for (volatile int d = 0; d < 20000; d++) {}
     }
 }

@@ -1,4 +1,5 @@
 #include "string.h"
+#include <stdint.h>
 
 size_t strlen(const char* s) {
     size_t len = 0;
@@ -71,18 +72,38 @@ void backspace(char s[]) {
 }
 
 void* memset(void* dest, int val, size_t len) {
-    unsigned char* ptr = (unsigned char*)dest;
-    while (len-- > 0) {
-        *ptr++ = (unsigned char)val;
+    uint64_t* d64 = (uint64_t*)dest;
+    uint8_t v = (uint8_t)val;
+    uint64_t v64 = ((uint64_t)v << 56) | ((uint64_t)v << 48) | ((uint64_t)v << 40) | ((uint64_t)v << 32) |
+                   ((uint64_t)v << 24) | ((uint64_t)v << 16) | ((uint64_t)v << 8)  | (uint64_t)v;
+    
+    size_t len64 = len / 8;
+    while (len64-- > 0) {
+        *d64++ = v64;
+    }
+    
+    uint8_t* d8 = (uint8_t*)d64;
+    size_t len8 = len % 8;
+    while (len8-- > 0) {
+        *d8++ = v;
     }
     return dest;
 }
 
 void* memcpy(void* dest, const void* src, size_t len) {
-    char* d = (char*)dest;
-    const char* s = (const char*)src;
-    while (len-- > 0) {
-        *d++ = *s++;
+    uint64_t* d64 = (uint64_t*)dest;
+    const uint64_t* s64 = (const uint64_t*)src;
+    
+    size_t len64 = len / 8;
+    while (len64-- > 0) {
+        *d64++ = *s64++;
+    }
+    
+    uint8_t* d8 = (uint8_t*)d64;
+    const uint8_t* s8 = (const uint8_t*)s64;
+    size_t len8 = len % 8;
+    while (len8-- > 0) {
+        *d8++ = *s8++;
     }
     return dest;
 }
