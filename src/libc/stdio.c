@@ -216,7 +216,7 @@ int sprintf(char* str, const char* format, ...) {
 }
 
 int printf(const char* format, ...) {
-    char buf[512];
+    char buf[4096];
     va_list ap;
     va_start(ap, format);
     int res = vsprintf(buf, format, ap);
@@ -226,7 +226,7 @@ int printf(const char* format, ...) {
 }
 
 int fprintf(FILE* stream, const char* format, ...) {
-    char buf[512];
+    char buf[4096];
     va_list ap;
     va_start(ap, format);
     int res = vsprintf(buf, format, ap);

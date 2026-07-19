@@ -268,8 +268,8 @@ int write(int fd, const void* buf, int count) {
     if (f->node == &stdout_node) {
         // Output to GUI Terminal console
         // Terminate string for safety
-        char temp[512];
-        int to_copy = (count >= 511) ? 511 : count;
+        char temp[4096];
+        int to_copy = (count >= 4095) ? 4095 : count;
         memcpy(temp, buf, to_copy);
         temp[to_copy] = '\0';
         gui_write_string(temp);
@@ -278,8 +278,8 @@ int write(int fd, const void* buf, int count) {
     
     if (f->node == &stderr_node) {
         // Output to serial COM1 debug console
-        char temp[512];
-        int to_copy = (count >= 511) ? 511 : count;
+        char temp[4096];
+        int to_copy = (count >= 4095) ? 4095 : count;
         memcpy(temp, buf, to_copy);
         temp[to_copy] = '\0';
         print_serial(temp);
