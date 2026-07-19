@@ -51,12 +51,17 @@ void* kmalloc(size_t size) {
         curr = curr->next;
     }
 
-    // Need more memory - for simplicity, just allocate 1MB chunk from PMM and add to list
-    void* new_pages = pmm_alloc_pages(256);
+    // Need more memory - allocate a chunk that is at least large enough for the requested size
+    uint64_t pages_needed = (size + sizeof(heap_block_t) + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (pages_needed < 256) {
+        pages_needed = 256; // Allocate at least 1MB to prevent fragmenting PMM
+    }
+
+    void* new_pages = pmm_alloc_pages(pages_needed);
     if (!new_pages) return 0; // OOM
 
     heap_block_t* new_block = (heap_block_t*)new_pages;
-    new_block->size = 256 * PAGE_SIZE - sizeof(heap_block_t);
+    new_block->size = pages_needed * PAGE_SIZE - sizeof(heap_block_t);
     new_block->free = 1;
     new_block->next = heap_head;
     heap_head = new_block;

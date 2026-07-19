@@ -7,7 +7,7 @@ uint64_t pmm_used_memory = 0;
 uint64_t pmm_free_memory = 0;
 uint64_t pmm_hhdm_offset = 0;
 
-#define BUDDY_MAX_ORDER 10  // Max block size = 2^10 pages = 4MB
+#define BUDDY_MAX_ORDER 12  // Max block size = 2^12 pages = 16MB
 #define TOTAL_PAGES_MAX (1024 * 1024) // Support up to 4GB of RAM (1M pages)
 
 typedef struct free_block {

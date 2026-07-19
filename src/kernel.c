@@ -45,10 +45,25 @@ static volatile struct limine_module_request module_request = {
     .revision = 0
 };
 
+static void enable_sse(void) {
+    uint64_t cr0;
+    uint64_t cr4;
+    __asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+    cr0 &= ~(1ULL << 2); // Clear EM (Emulation)
+    cr0 |= (1ULL << 1);  // Set MP (Monitor Co-processor)
+    __asm__ volatile("mov %0, %%cr0" : : "r"(cr0));
+
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= (3ULL << 9);  // Set OSFXSR and OSXMMEXCPT
+    __asm__ volatile("mov %0, %%cr4" : : "r"(cr4));
+    print_serial("[DragonOS] CPU SSE/SSE2 instructions enabled.\n");
+}
+
 void kernel_main(void) {
     /* Initialize serial port for debug logs */
     init_serial();
     print_serial("[DragonOS] Booting 64-bit kernel under Limine Boot Protocol...\n");
+    enable_sse();
 
     /* Initialize CPU IDT */
     idt_init();
