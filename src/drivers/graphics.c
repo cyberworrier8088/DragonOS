@@ -302,7 +302,15 @@ void draw_string(uint32_t x, uint32_t y, const char* str, uint32_t color) {
 
 /* ========== Windows 11 Desktop Wallpaper ========== */
 
+static uint32_t wallpaper_buffer[MAX_WIDTH * MAX_HEIGHT];
+static int wallpaper_rendered = 0;
+
 void draw_desktop_gradient(void) {
+    if (wallpaper_rendered) {
+        memcpy(back_buffer, wallpaper_buffer, screen_width * screen_height * 4);
+        return;
+    }
+
     /* Windows 11 "Bloom" wallpaper: dark navy edges, centered bright blue bloom */
     int cx = (int)screen_width / 2;
     int cy = (int)screen_height / 2;
@@ -352,9 +360,12 @@ void draw_desktop_gradient(void) {
                 if (b > 255) b = 255;
             }
 
-            back_buffer[y * screen_width + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+            wallpaper_buffer[y * screen_width + x] = ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
         }
     }
+    
+    wallpaper_rendered = 1;
+    memcpy(back_buffer, wallpaper_buffer, screen_width * screen_height * 4);
 }
 
 /* ========== Buffer Blit ========== */

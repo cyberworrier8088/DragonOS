@@ -169,7 +169,7 @@ void init_gui(void) {
     windows[0].h = 200;
     strcpy(windows[0].title, "System Information");
     windows[0].active = 0;
-    windows[0].closed = 0;
+    windows[0].closed = 1;
     windows[0].minimized = 0;
     windows[0].dragging = 0;
     windows[0].id = 0;
@@ -180,12 +180,12 @@ void init_gui(void) {
     windows[1].w = 440;
     windows[1].h = 340;
     strcpy(windows[1].title, "Terminal");
-    windows[1].active = 1;
-    windows[1].closed = 0;
+    windows[1].active = 0;
+    windows[1].closed = 1;
     windows[1].minimized = 0;
     windows[1].dragging = 0;
     windows[1].id = 1;
-    active_win_id = 1;
+    active_win_id = -1;
 
     /* 2: Calculator */
     windows[2].x = 120;
@@ -194,7 +194,7 @@ void init_gui(void) {
     windows[2].h = 280;
     strcpy(windows[2].title, "Calculator");
     windows[2].active = 0;
-    windows[2].closed = 0;
+    windows[2].closed = 1;
     windows[2].minimized = 0;
     windows[2].dragging = 0;
     windows[2].id = 2;
@@ -206,7 +206,7 @@ void init_gui(void) {
     windows[3].h = 220;
     strcpy(windows[3].title, "Task Manager");
     windows[3].active = 0;
-    windows[3].closed = 0;
+    windows[3].closed = 1;
     windows[3].minimized = 0;
     windows[3].dragging = 0;
     windows[3].id = 3;
@@ -613,7 +613,6 @@ void gui_draw(void) {
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         gui_window_t* w = &windows[i];
-        if (w->closed) continue;
 
         int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
         int iy = tby + (tb_h - icon_size) / 2;
@@ -777,13 +776,13 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         /* App icon clicks */
         for (int i = 0; i < MAX_WINDOWS; i++) {
             gui_window_t* w = &windows[i];
-            if (w->closed) continue;
 
             int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
             int iy = tby + (tb_h - icon_size) / 2;
 
             if (mx >= ix && mx < ix + icon_size && my >= iy && my < iy + icon_size) {
-                if (w->minimized) {
+                if (w->closed || w->minimized) {
+                    w->closed = 0;
                     w->minimized = 0;
                     active_win_id = w->id;
                 } else if (active_win_id == w->id) {
