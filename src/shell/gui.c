@@ -944,10 +944,13 @@ void gui_draw(void) {
         time_str[2] = ':';
         time_str[3] = '0' + (rtc_min / 10);
         time_str[4] = '0' + (rtc_min % 10);
-        time_str[5] = ' ';
-        time_str[6] = pm ? 'P' : 'A';
-        time_str[7] = 'M';
-        time_str[8] = '\0';
+        time_str[5] = ':';
+        time_str[6] = '0' + (rtc_sec / 10);
+        time_str[7] = '0' + (rtc_sec % 10);
+        time_str[8] = ' ';
+        time_str[9] = pm ? 'P' : 'A';
+        time_str[10] = 'M';
+        time_str[11] = '\0';
     }
 
     int tray_x = (int)screen_width - 140;

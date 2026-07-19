@@ -106,42 +106,41 @@ double atof(const char* str) {
     return (double)sign * res / factor;
 }
 
-int setjmp(jmp_buf env) {
-    uint64_t val;
+__attribute__((naked)) int setjmp(jmp_buf env) {
     __asm__ volatile(
-        "mov %%rbx, 0(%1)\n"
-        "mov %%rsp, 8(%1)\n"
-        "mov %%rbp, 16(%1)\n"
-        "mov %%r12, 24(%1)\n"
-        "mov %%r13, 32(%1)\n"
-        "mov %%r14, 40(%1)\n"
-        "mov %%r15, 48(%1)\n"
-        "lea 1f(%%rip), %%rax\n"
-        "mov %%rax, 56(%1)\n"
-        "mov $0, %%rax\n"
-        "1:\n"
-        "mov %%rax, %0\n"
-        : "=r"(val) : "r"(env) : "rax", "memory"
+        "mov %%rbx, 0(%%rdi)\n"
+        "lea 8(%%rsp), %%rax\n"
+        "mov %%rax, 8(%%rdi)\n"
+        "mov %%rbp, 16(%%rdi)\n"
+        "mov %%r12, 24(%%rdi)\n"
+        "mov %%r13, 32(%%rdi)\n"
+        "mov %%r14, 40(%%rdi)\n"
+        "mov %%r15, 48(%%rdi)\n"
+        "mov (%%rsp), %%rax\n"
+        "mov %%rax, 56(%%rdi)\n"
+        "xor %%eax, %%eax\n"
+        "ret\n"
+        ::: "memory"
     );
-    return val;
 }
 
-void longjmp(jmp_buf env, int val) {
+__attribute__((naked)) void longjmp(jmp_buf env, int val) {
     __asm__ volatile(
-        "mov %1, %%eax\n"
-        "test %%eax, %%eax\n"
+        "mov %%rsi, %%rax\n"
+        "test %%rax, %%rax\n"
         "jnz 1f\n"
-        "mov $1, %%eax\n"
+        "inc %%rax\n"
         "1:\n"
-        "mov 0(%0), %%rbx\n"
-        "mov 8(%0), %%rsp\n"
-        "mov 16(%0), %%rbp\n"
-        "mov 24(%0), %%r12\n"
-        "mov 32(%0), %%r13\n"
-        "mov 40(%0), %%r14\n"
-        "mov 48(%0), %%r15\n"
-        "jmp *56(%0)\n"
-        : : "r"(env), "r"(val) : "memory"
+        "mov 0(%%rdi), %%rbx\n"
+        "mov 8(%%rdi), %%rsp\n"
+        "mov 16(%%rdi), %%rbp\n"
+        "mov 24(%%rdi), %%r12\n"
+        "mov 32(%%rdi), %%r13\n"
+        "mov 40(%%rdi), %%r14\n"
+        "mov 48(%%rdi), %%r15\n"
+        "mov 56(%%rdi), %%rdx\n"
+        "jmp *%%rdx\n"
+        ::: "memory"
     );
 }
 
@@ -252,8 +251,8 @@ int mkdir(const char* pathname, uint32_t mode) {
     return -1;
 }
 
-int _setjmp(jmp_buf env) {
-    return setjmp(env);
+__attribute__((naked)) int _setjmp(jmp_buf env) {
+    __asm__ volatile("jmp setjmp");
 }
 
 unsigned long strtoul(const char* nptr, char** endptr, int base) {

@@ -139,6 +139,8 @@ typedef struct {
     Define defines[MAX_DEFINES];
     int    n_defines;
 
+    int is_lvalue;
+
     /* Local variable tracking for current function */
     struct { char name[MAX_ID_LEN]; int offset; int size; } locals[256];
     int n_locals;
@@ -501,6 +503,14 @@ static int add_local(TccState* s, const char* name, int size) {
 
 /* Forward declarations */
 static void parse_expr(TccState* s);
+
+static void load_rvalue(TccState* s) {
+    if (s->is_lvalue) {
+        emit(s, OP_LOAD);
+        s->is_lvalue = 0;
+    }
+}
+
 static void parse_assign_expr(TccState* s);
 static void parse_statement(TccState* s);
 static void parse_block(TccState* s);
@@ -549,6 +559,7 @@ static void parse_primary(TccState* s) {
     if (s->token == TK_NUM) {
         emit2(s, OP_IMM, (int)s->token_val);
         next_token(s);
+        s->is_lvalue = 0;
     }
     else if (s->token == TK_STR) {
         int addr = store_string(s, s->token_str);
@@ -608,6 +619,7 @@ static void parse_primary(TccState* s) {
             if (bi) {
                 emit2(s, OP_BUILTIN, bi);
                 emit(s, nargs);
+                s->is_lvalue = 0;
             } else {
                 Symbol* sym = find_symbol(s, name);
                 if (!sym) {
@@ -617,6 +629,7 @@ static void parse_primary(TccState* s) {
                 }
                 emit2(s, OP_CALL, sym->addr);
                 emit(s, nargs);
+                s->is_lvalue = 0;
             }
         }
         /* Variable access */
@@ -624,16 +637,19 @@ static void parse_primary(TccState* s) {
             int local_off = find_local(s, name);
             if (local_off >= 0) {
                 emit2(s, OP_LOCAL, local_off);
+                s->is_lvalue = 1;
                 /* Don't auto-load for assignment targets */
             } else {
                 Symbol* sym = find_symbol(s, name);
                 if (sym) {
                     emit2(s, OP_GLOBAL, sym->addr);
+                    s->is_lvalue = 1;
                 } else {
                     char msg[128];
                     sprintf(msg, "undefined variable '%s'", name);
                     tcc_error(s, msg);
                     emit2(s, OP_IMM, 0);
+                    s->is_lvalue = 0;
                 }
             }
         }
@@ -653,22 +669,23 @@ static void parse_postfix(TccState* s) {
     while (s->token == '[' || s->token == TK_INC || s->token == TK_DEC) {
         if (s->token == '[') {
             next_token(s);
-            emit(s, OP_LOAD); /* load array base address */
+            load_rvalue(s); /* load array base address */
             parse_expr(s);
             emit2(s, OP_IMM, 8);
             emit(s, OP_MUL);
             emit(s, OP_ADD); /* base + index * size */
+            s->is_lvalue = 1;
             expect(s, ']');
         } else if (s->token == TK_INC || s->token == TK_DEC) {
             int op = s->token;
             next_token(s);
             emit(s, OP_DUP);   /* keep address */
-            emit(s, OP_DUP);
             emit(s, OP_LOAD);  /* load current value */
+            s->is_lvalue = 0; /* value is now on stack */
             emit2(s, OP_IMM, 1);
             emit(s, op == TK_INC ? OP_ADD : OP_SUB);
             emit(s, OP_STORE); /* store new value */
-            emit(s, OP_LOAD);  /* return old value (approximately -- returns new) */
+            s->is_lvalue = 0;
         }
     }
 }
@@ -678,19 +695,26 @@ static void parse_unary(TccState* s) {
     if (s->token == '-') {
         next_token(s);
         parse_unary(s);
+        load_rvalue(s);
         emit(s, OP_NEG);
+        s->is_lvalue = 0;
     } else if (s->token == '!') {
         next_token(s);
         parse_unary(s);
+        load_rvalue(s);
         emit(s, OP_NOT);
+        s->is_lvalue = 0;
     } else if (s->token == '~') {
         next_token(s);
         parse_unary(s);
+        load_rvalue(s);
         emit(s, OP_BNOT);
+        s->is_lvalue = 0;
     } else if (s->token == '*') {
         next_token(s);
         parse_unary(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
+        s->is_lvalue = 1;
     } else if (s->token == '&') {
         next_token(s);
         /* Address-of: just parse the primary and don't load */
@@ -704,7 +728,7 @@ static void parse_unary(TccState* s) {
         emit2(s, OP_IMM, 1);
         emit(s, op == TK_INC ? OP_ADD : OP_SUB);
         emit(s, OP_STORE);
-        emit(s, OP_LOAD);
+        s->is_lvalue = 0;
     } else {
         parse_postfix(s);
     }
@@ -719,10 +743,12 @@ static void parse_mul(TccState* s) {
         /* Load left operand if it was an lvalue */
         emit(s, OP_LOAD);
         parse_unary(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
+        s->is_lvalue = 1;
         if (op == '*') emit(s, OP_MUL);
         else if (op == '/') emit(s, OP_DIV);
         else emit(s, OP_MOD);
+        s->is_lvalue = 0;
     }
 }
 
@@ -732,10 +758,11 @@ static void parse_add(TccState* s) {
     while (s->token == '+' || s->token == '-') {
         int op = s->token;
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_mul(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, op == '+' ? OP_ADD : OP_SUB);
+        s->is_lvalue = 0;
     }
 }
 
@@ -745,10 +772,11 @@ static void parse_shift(TccState* s) {
     while (s->token == TK_SHL || s->token == TK_SHR) {
         int op = s->token;
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_add(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, op == TK_SHL ? OP_SHL : OP_SHR);
+        s->is_lvalue = 0;
     }
 }
 
@@ -758,13 +786,14 @@ static void parse_relational(TccState* s) {
     while (s->token == '<' || s->token == '>' || s->token == TK_LE || s->token == TK_GE) {
         int op = s->token;
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_shift(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         if (op == '<') emit(s, OP_LT);
         else if (op == '>') emit(s, OP_GT);
         else if (op == TK_LE) emit(s, OP_LE);
         else emit(s, OP_GE);
+        s->is_lvalue = 0;
     }
 }
 
@@ -774,10 +803,11 @@ static void parse_equality(TccState* s) {
     while (s->token == TK_EQ || s->token == TK_NE) {
         int op = s->token;
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_relational(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, op == TK_EQ ? OP_EQ : OP_NE);
+        s->is_lvalue = 0;
     }
 }
 
@@ -786,10 +816,11 @@ static void parse_bitand(TccState* s) {
     parse_equality(s);
     while (s->token == '&') {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_equality(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, OP_AND);
+        s->is_lvalue = 0;
     }
 }
 
@@ -798,10 +829,11 @@ static void parse_bitxor(TccState* s) {
     parse_bitand(s);
     while (s->token == '^') {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_bitand(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, OP_XOR);
+        s->is_lvalue = 0;
     }
 }
 
@@ -810,10 +842,11 @@ static void parse_bitor(TccState* s) {
     parse_bitxor(s);
     while (s->token == '|') {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_bitxor(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, OP_OR);
+        s->is_lvalue = 0;
     }
 }
 
@@ -822,10 +855,11 @@ static void parse_logand(TccState* s) {
     parse_bitor(s);
     while (s->token == TK_AND) {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_bitor(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, OP_LAND);
+        s->is_lvalue = 0;
     }
 }
 
@@ -834,10 +868,11 @@ static void parse_logor(TccState* s) {
     parse_logand(s);
     while (s->token == TK_OR) {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         parse_logand(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         emit(s, OP_LOR);
+        s->is_lvalue = 0;
     }
 }
 
@@ -846,7 +881,7 @@ static void parse_ternary(TccState* s) {
     parse_logor(s);
     if (s->token == '?') {
         next_token(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         int jz = emit_placeholder(s);
         parse_expr(s);
         int jmp_end = emit_placeholder(s);
@@ -854,6 +889,7 @@ static void parse_ternary(TccState* s) {
         patch(s, jz, OP_JZ, s->code_pos);
         parse_ternary(s);
         patch(s, jmp_end, OP_JMP, s->code_pos);
+        s->is_lvalue = 0;
     }
 }
 
@@ -865,8 +901,9 @@ static void parse_assign_expr(TccState* s) {
         next_token(s);
         /* top of stack has the lvalue address */
         parse_assign_expr(s);
-        emit(s, OP_LOAD); /* load rvalue */
+        load_rvalue(s); /* load rvalue */
         emit(s, OP_STORE);
+        s->is_lvalue = 0;
         /* After store, the value remains for chained assignment */
     }
     else if (s->token == TK_ADDASSIGN || s->token == TK_SUBASSIGN ||
@@ -875,13 +912,15 @@ static void parse_assign_expr(TccState* s) {
         next_token(s);
         emit(s, OP_DUP);   /* duplicate address */
         emit(s, OP_LOAD);  /* load current value */
+        s->is_lvalue = 0;
         parse_assign_expr(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         if (op == TK_ADDASSIGN) emit(s, OP_ADD);
         else if (op == TK_SUBASSIGN) emit(s, OP_SUB);
         else if (op == TK_MULASSIGN) emit(s, OP_MUL);
         else emit(s, OP_DIV);
         emit(s, OP_STORE);
+        s->is_lvalue = 0;
     }
 }
 
@@ -909,7 +948,7 @@ static void parse_statement(TccState* s) {
         next_token(s);
         expect(s, '(');
         parse_expr(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         expect(s, ')');
         int jz = emit_placeholder(s);
         parse_statement(s);
@@ -928,7 +967,7 @@ static void parse_statement(TccState* s) {
         int loop_start = s->code_pos;
         expect(s, '(');
         parse_expr(s);
-        emit(s, OP_LOAD);
+        load_rvalue(s);
         expect(s, ')');
         int jz = emit_placeholder(s);
 
@@ -956,15 +995,16 @@ static void parse_statement(TccState* s) {
                     if (s->token == '=') {
                         next_token(s);
                         emit2(s, OP_LOCAL, off);
+                        s->is_lvalue = 1;
                         parse_assign_expr(s);
-                        emit(s, OP_LOAD);
+                        load_rvalue(s);
                         emit(s, OP_STORE);
+                        s->is_lvalue = 0;
                         emit(s, OP_POP);
                     }
                 }
             } else {
                 parse_expr(s);
-                emit(s, OP_LOAD);
                 emit(s, OP_POP);
             }
         }
@@ -974,12 +1014,11 @@ static void parse_statement(TccState* s) {
         int jz = -1;
         if (s->token != ';') {
             parse_expr(s);
-            emit(s, OP_LOAD);
+            load_rvalue(s);
             jz = emit_placeholder(s);
         }
         expect(s, ';');
         /* Save increment expression position */
-        int incr_start = s->code_pos;
         int incr_jmp = -1;
         if (s->token != ')') {
             incr_jmp = emit_placeholder(s); /* jump over increment to body */
@@ -987,17 +1026,28 @@ static void parse_statement(TccState* s) {
         int incr_code = s->code_pos;
         if (s->token != ')') {
             /* We already jumped past, so parse the increment here */
+            parse_expr(s);
+            emit(s, OP_POP);
+            emit2(s, OP_JMP, loop_start); /* jump back to condition */
         }
         expect(s, ')');
 
         /* Body */
         s->loop_depth++;
         s->break_stack[s->loop_depth] = -1;
-        s->continue_stack[s->loop_depth] = loop_start;
+        s->continue_stack[s->loop_depth] = (incr_jmp != -1) ? incr_code : loop_start;
 
-        /* Simpler for-loop: just jump back to condition after body */
+        if (incr_jmp != -1) {
+            patch(s, incr_jmp, OP_JMP, s->code_pos);
+        }
+
         parse_statement(s);
-        emit2(s, OP_JMP, loop_start);
+        
+        if (incr_jmp != -1) {
+            emit2(s, OP_JMP, incr_code);
+        } else {
+            emit2(s, OP_JMP, loop_start);
+        }
 
         if (jz >= 0) patch(s, jz, OP_JZ, s->code_pos);
         if (s->break_stack[s->loop_depth] >= 0)
@@ -1008,7 +1058,7 @@ static void parse_statement(TccState* s) {
         next_token(s);
         if (s->token != ';') {
             parse_expr(s);
-            emit(s, OP_LOAD);
+            load_rvalue(s);
         } else {
             emit2(s, OP_IMM, 0);
         }
@@ -1077,7 +1127,6 @@ static void parse_statement(TccState* s) {
     else {
         /* Expression statement */
         parse_expr(s);
-        emit(s, OP_LOAD);
         emit(s, OP_POP);
         expect(s, ';');
     }
