@@ -148,15 +148,6 @@ void longjmp(jmp_buf env, int val) {
 #include "string.h"
 #include <stdarg.h>
 
-long strtol(const char* str, char** endptr, int base) {
-    (void)base;
-    long res = (long)atoi(str);
-    if (endptr) {
-        *endptr = (char*)str + strlen(str);
-    }
-    return res;
-}
-
 double strtod(const char* str, char** endptr) {
     double res = atof(str);
     if (endptr) {
@@ -340,4 +331,65 @@ double pow(double base, double exp) {
         return res;
     }
     return base;
+}
+
+long strtol(const char* nptr, char** endptr, int base) {
+    const char* s = nptr;
+    long acc = 0;
+    int c;
+    long any = 0;
+    int neg = 0;
+
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') {
+        s++;
+    }
+
+    if (*s == '-') {
+        neg = 1;
+        s++;
+    } else if (*s == '+') {
+        s++;
+    }
+
+    if (base == 0) {
+        if (*s == '0') {
+            s++;
+            if (*s == 'x' || *s == 'X') {
+                s++;
+                base = 16;
+            } else {
+                base = 8;
+            }
+        } else {
+            base = 10;
+        }
+    } else if (base == 16) {
+        if (*s == '0' && (s[1] == 'x' || s[1] == 'X')) {
+            s += 2;
+        }
+    }
+
+    while ((c = *s) != '\0') {
+        if (c >= '0' && c <= '9') {
+            c -= '0';
+        } else if (c >= 'a' && c <= 'z') {
+            c -= 'a' - 10;
+        } else if (c >= 'A' && c <= 'Z') {
+            c -= 'A' - 10;
+        } else {
+            break;
+        }
+        if (c >= base) {
+            break;
+        }
+        acc = acc * base + c;
+        any = 1;
+        s++;
+    }
+
+    if (endptr != 0) {
+        *endptr = (char*)(any ? s : nptr);
+    }
+
+    return neg ? -acc : acc;
 }

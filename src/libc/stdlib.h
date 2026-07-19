@@ -13,6 +13,8 @@ char* getenv(const char* name);
 int abs(int x);
 int atoi(const char* str);
 double atof(const char* str);
+long strtol(const char* nptr, char** endptr, int base);
+unsigned long strtoul(const char* nptr, char** endptr, int base);
 
 typedef uint64_t jmp_buf[8];
 int setjmp(jmp_buf env);

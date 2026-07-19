@@ -142,19 +142,29 @@ OPR_NOBINOPR
 typedef enum UnOpr{OPR_MINUS,OPR_NOT,OPR_LEN,OPR_NOUNOPR}UnOpr;
 #define LUA_QL(x)"'"x"'"
 #define luai_apicheck(L,o){(void)L;}
-#define lua_number2str(s,n)sprintf((s),"%.14g",(n))
-#define lua_str2number(s,p)strtod((s),(p))
+#define lua_number2str(s,n)sprintf((s),"%ld",(n))
+#define lua_str2number(s,p)strtol((s),(p),10)
 #define luai_numadd(a,b)((a)+(b))
 #define luai_numsub(a,b)((a)-(b))
 #define luai_nummul(a,b)((a)*(b))
 #define luai_numdiv(a,b)((a)/(b))
-#define luai_nummod(a,b)((a)-floor((a)/(b))*(b))
-#define luai_numpow(a,b)(pow(a,b))
+#define luai_nummod(a,b)((a)-((a)/(b))*(b))
+static long ipow(long base, long exp) {
+    if (exp < 0) return 0;
+    long res = 1;
+    while (exp > 0) {
+        if (exp & 1) res *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return res;
+}
+#define luai_numpow(a,b)(ipow(a,b))
 #define luai_numunm(a)(-(a))
 #define luai_numeq(a,b)((a)==(b))
 #define luai_numlt(a,b)((a)<(b))
 #define luai_numle(a,b)((a)<=(b))
-#define luai_numisnan(a)(!luai_numeq((a),(a)))
+#define luai_numisnan(a)(0)
 #define lua_number2int(i,d)((i)=(int)(d))
 #define lua_number2integer(i,d)((i)=(lua_Integer)(d))
 #define LUAI_THROW(L,c)longjmp((c)->b,1)
@@ -165,7 +175,7 @@ typedef struct lua_State lua_State;
 typedef int(*lua_CFunction)(lua_State*L);
 typedef const char*(*lua_Reader)(lua_State*L,void*ud,size_t*sz);
 typedef void*(*lua_Alloc)(void*ud,void*ptr,size_t osize,size_t nsize);
-typedef double lua_Number;
+typedef long lua_Number;
 typedef ptrdiff_t lua_Integer;
 static void lua_settop(lua_State*L,int idx);
 static int lua_type(lua_State*L,int idx);
@@ -208,8 +218,8 @@ typedef size_t lu_mem;
 typedef ptrdiff_t l_mem;
 typedef unsigned char lu_byte;
 #define IntPoint(p)((unsigned int)(lu_mem)(p))
-typedef union{double u;void*s;long l;}L_Umaxalign;
-typedef double l_uacNumber;
+typedef union{long u;void*s;long l;}L_Umaxalign;
+typedef long l_uacNumber;
 #define check_exp(c,e)(e)
 #define UNUSED(x)((void)(x))
 #define cast(t,exp)((t)(exp))
