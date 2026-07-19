@@ -5,6 +5,8 @@
 #include "drivers/mouse.h"
 #include "drivers/graphics.h"
 #include "shell/gui.h"
+#include "mm/pmm.h"
+#include "mm/kheap.h"
 #include "../limine-bin/limine.h"
 
 // Set the base revision to 4
@@ -15,6 +17,20 @@ static volatile LIMINE_BASE_REVISION(4);
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
+
+// Request memory map from bootloader
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_memmap_request memmap_request = {
+    .id = LIMINE_MEMMAP_REQUEST,
+    .revision = 0
+};
+
+// Request Higher Half Direct Map (HHDM)
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_hhdm_request hhdm_request = {
+    .id = LIMINE_HHDM_REQUEST,
     .revision = 0
 };
 
@@ -57,6 +73,15 @@ void kernel_main(void) {
     init_keyboard();
     print_serial("[DragonOS] Timer (100Hz) & Keyboard drivers active.\n");
 
+    /* Initialize Advanced Memory Management (PMM & KHeap) */
+    if (memmap_request.response != NULL && hhdm_request.response != NULL) {
+        pmm_init(memmap_request.response, hhdm_request.response->offset);
+        kheap_init();
+        print_serial("[DragonOS] Physical Memory Manager and Kernel Heap initialized.\n");
+    } else {
+        print_serial("[DragonOS] Error: Limine did not provide a memory map or HHDM!\n");
+    }
+
     /* Initialize mouse handler and register interrupt vector 44 (IRQ12) */
     register_interrupt_handler(44, mouse_handler);
     init_mouse();
@@ -72,6 +97,7 @@ void kernel_main(void) {
 
     /* Desktop Rendering loop */
     while (1) {
+        gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
         gui_draw();
         // Pace drawing loop
         for (volatile int d = 0; d < 20000; d++) {}

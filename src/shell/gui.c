@@ -5,8 +5,10 @@
 #include "../cpu/ports.h"
 #include "../libc/string.h"
 #include "shell.h"
+#include "../mm/pmm.h"
+#include "../mm/kheap.h"
 
-gui_window_t windows[MAX_WINDOWS];
+gui_window_t* windows;
 int active_win_id = -1;
 
 /* Start Menu State */
@@ -162,6 +164,9 @@ static void gui_execute_command(const char* cmd) {
 }
 
 void init_gui(void) {
+    /* Dynamically allocate windows using KHeap */
+    windows = (gui_window_t*)kmalloc(sizeof(gui_window_t) * MAX_WINDOWS);
+
     /* 0: Computer */
     windows[0].x = 80;
     windows[0].y = 60;
@@ -345,7 +350,17 @@ static void draw_window_content(gui_window_t* win) {
         draw_rounded_rect(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BG);
         draw_rounded_rect_outline(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BORDER);
         draw_string(x + 22, content_y + 58, "Memory", WIN11_ACCENT);
-        draw_string(x + 22, content_y + 74, "4096 MB Physical", WIN11_TEXT_PRIMARY);
+        
+        char mem_str[64];
+        char num_buf[32];
+        strcpy(mem_str, "Used: ");
+        int_to_ascii(pmm_used_memory / 1024 / 1024, num_buf);
+        strcat(mem_str, num_buf);
+        strcat(mem_str, " MB / Total: ");
+        int_to_ascii(pmm_total_memory / 1024 / 1024, num_buf);
+        strcat(mem_str, num_buf);
+        strcat(mem_str, " MB");
+        draw_string(x + 22, content_y + 74, mem_str, WIN11_TEXT_PRIMARY);
 
         /* OS card */
         draw_rounded_rect(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BG);

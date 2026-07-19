@@ -19,6 +19,8 @@ OBJS = boot.o \
        src/drivers/timer.o \
        src/drivers/keyboard.o \
        src/libc/string.o \
+       src/mm/pmm.o \
+       src/mm/kheap.o \
        src/shell/shell.o \
        src/shell/gui.o \
        kernel.o
