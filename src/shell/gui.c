@@ -23,9 +23,6 @@ int start_menu_open = 0;
 
 /* Clock / Time counter */
 static uint32_t ticks_counter = 0;
-static int hours = 12;
-static int minutes = 0;
-static int seconds = 0;
 static char time_str[12] = "12:00 PM";
 static char date_str[16] = "Jul 19";
 
@@ -735,26 +732,29 @@ void gui_draw(void) {
     }
 
     /* System tray (right side) */
-    /* Update clock */
+    /* Update clock using CMOS RTC */
     ticks_counter++;
     if (ticks_counter % 100 == 0) {
-        seconds++;
-        if (seconds >= 60) {
-            seconds = 0;
-            minutes++;
-            if (minutes >= 60) {
-                minutes = 0;
-                hours++;
-                if (hours > 12) hours = 1;
-            }
+        uint8_t rtc_hour = 0, rtc_min = 0, rtc_sec = 0;
+        extern void rtc_read_time(uint8_t* hours, uint8_t* minutes, uint8_t* seconds);
+        rtc_read_time(&rtc_hour, &rtc_min, &rtc_sec);
+        
+        int pm = 0;
+        int disp_hour = rtc_hour;
+        if (disp_hour >= 12) {
+            pm = 1;
+            if (disp_hour > 12) disp_hour -= 12;
+        } else if (disp_hour == 0) {
+            disp_hour = 12;
         }
-        time_str[0] = '0' + (hours / 10);
-        time_str[1] = '0' + (hours % 10);
+        
+        time_str[0] = '0' + (disp_hour / 10);
+        time_str[1] = '0' + (disp_hour % 10);
         time_str[2] = ':';
-        time_str[3] = '0' + (minutes / 10);
-        time_str[4] = '0' + (minutes % 10);
+        time_str[3] = '0' + (rtc_min / 10);
+        time_str[4] = '0' + (rtc_min % 10);
         time_str[5] = ' ';
-        time_str[6] = 'P';
+        time_str[6] = pm ? 'P' : 'A';
         time_str[7] = 'M';
         time_str[8] = '\0';
     }

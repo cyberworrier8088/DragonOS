@@ -3,6 +3,7 @@
 #include "../drivers/serial.h"
 #include "../shell/gui.h"
 #include "../mm/pmm.h"
+#include "../mm/kheap.h"
 
 static file_desc_t fd_table[MAX_FD];
 static vfs_node_t vfs_nodes[32];
@@ -89,6 +90,57 @@ static int sys_meminfo_read(vfs_node_t* node, uint32_t node_offset, uint32_t siz
     return to_read;
 }
 
+static int dev_sda_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
+    (void)node;
+    uint32_t lba = offset / 512;
+    uint32_t count = (size + 511) / 512;
+    if (count == 0) count = 1;
+    
+    void* temp = kmalloc(count * 512);
+    if (!temp) return -1;
+    
+    extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
+    if (ata_read_sectors(lba, count, (uint32_t*)temp) < 0) {
+        kfree(temp);
+        return -1;
+    }
+    
+    uint32_t off_in_sector = offset % 512;
+    memcpy(buffer, (uint8_t*)temp + off_in_sector, size);
+    kfree(temp);
+    return size;
+}
+
+static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
+    (void)node;
+    uint32_t lba = offset / 512;
+    uint32_t count = (size + 511) / 512;
+    if (count == 0) count = 1;
+    
+    void* temp = kmalloc(count * 512);
+    if (!temp) return -1;
+    
+    extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
+    if (offset % 512 != 0 || size < count * 512) {
+        if (ata_read_sectors(lba, count, (uint32_t*)temp) < 0) {
+            kfree(temp);
+            return -1;
+        }
+    }
+    
+    uint32_t off_in_sector = offset % 512;
+    memcpy((uint8_t*)temp + off_in_sector, buffer, size);
+    
+    extern int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer);
+    if (ata_write_sectors(lba, count, (const uint32_t*)temp) < 0) {
+        kfree(temp);
+        return -1;
+    }
+    
+    kfree(temp);
+    return size;
+}
+
 void init_vfs(void) {
     memset(fd_table, 0, sizeof(fd_table));
     
@@ -124,6 +176,12 @@ void init_vfs(void) {
     strcpy(sys_meminfo->name, "/sys/meminfo");
     sys_meminfo->read = sys_meminfo_read;
     sys_meminfo->write = dev_null_write;
+
+    vfs_node_t* dev_sda = &vfs_nodes[vfs_node_count++];
+    strcpy(dev_sda->name, "/dev/sda");
+    dev_sda->read = dev_sda_read;
+    dev_sda->write = dev_sda_write;
+    dev_sda->size = 100 * 1024 * 1024; // Mock disk size (100MB)
     
     print_serial("[DragonOS] POSIX Virtual File System initialized.\n");
 }

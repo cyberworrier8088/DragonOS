@@ -126,6 +126,10 @@ void kernel_main(void) {
     /* Initialize PCI Bus scanner */
     pci_init();
 
+    /* Initialize ATA/IDE Disk Controller */
+    extern void ata_init(void);
+    ata_init();
+
     /* Initialize POSIX VFS */
     init_vfs();
 

@@ -45,6 +45,8 @@ OBJS = boot.o \
        src/mm/kheap.o \
        src/mm/paging.o \
        src/drivers/pci.o \
+       src/drivers/rtc.o \
+       src/drivers/ata.o \
        src/fs/vfs.o \
        $(DOOM_OBJS) \
        src/shell/shell.o \
