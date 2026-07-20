@@ -3,4 +3,9 @@
 *.iso
 isodir/
 serial.log
+qemu_serial.log
 limine-bin/
+
+# Game data files (obtain separately; see README)
+pak0.pak
+*.wad
