@@ -82,6 +82,12 @@ void mouse_handler(registers_t* r) {
 
     mouse_byte[mouse_cycle++] = inb(0x60);
 
+    /* Validate packet synchronization: bit 3 of byte 0 must be 1 */
+    if (mouse_cycle == 1 && !(mouse_byte[0] & 0x08)) {
+        mouse_cycle = 0; // Desynced or bad packet, drop it
+        return;
+    }
+
     if (mouse_cycle == 3) {
         mouse_cycle = 0;
 

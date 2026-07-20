@@ -61,14 +61,19 @@ void draw_pixel_alpha(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha) {
 }
 
 void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    if (x >= screen_width || y >= screen_height) return;
+    if (x + w > screen_width) w = screen_width - x;
+    if (y + h > screen_height) h = screen_height - y;
+    
     for (uint32_t i = 0; i < h; i++) {
-        uint32_t py = y + i;
-        if (py >= screen_height) break;
-        for (uint32_t j = 0; j < w; j++) {
-            uint32_t px = x + j;
-            if (px >= screen_width) break;
-            back_buffer[py * screen_width + px] = color;
-        }
+        uint32_t* dest = &back_buffer[(y + i) * screen_width + x];
+        uint32_t count = w;
+        __asm__ volatile (
+            "rep stosl"
+            : "+D"(dest), "+c"(count)
+            : "a"(color)
+            : "memory"
+        );
     }
 }
 

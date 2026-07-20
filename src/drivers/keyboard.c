@@ -6,6 +6,7 @@ extern void shell_input_char(char c);
 
 static int shift_pressed = 0;
 static int caps_lock = 0;
+static int e0_prefix = 0;
 
 static const char scancode_map[] = {
     0,  27, '1', '2', '3', '4', '5', '6', '7', '8',	/* 9 */
@@ -71,8 +72,14 @@ static void keyboard_callback(registers_t* regs) {
     extern void doom_handle_keyboard_raw(uint8_t scancode);
     doom_handle_keyboard_raw(scancode);
 
+    if (scancode == 0xE0) {
+        e0_prefix = 1;
+        return;
+    }
+
     /* Check if it's a key release (break code) */
     if (scancode & 0x80) {
+        e0_prefix = 0; // Reset prefix on release
         uint8_t released_scancode = scancode & 0x7F;
         if (released_scancode == 0x2A || released_scancode == 0x36) {
             shift_pressed = 0;
@@ -88,10 +95,12 @@ static void keyboard_callback(registers_t* regs) {
 
     if (scancode == 0x3A) {
         caps_lock = !caps_lock;
+        e0_prefix = 0;
         return;
     }
 
-    if (scancode < sizeof(scancode_map)) {
+    /* Only type characters if it is NOT an E0 extended key (like arrows) */
+    if (!e0_prefix && scancode < sizeof(scancode_map)) {
         char ascii = 0;
         if (shift_pressed) {
             if (scancode < sizeof(scancode_shift_map)) {
@@ -119,6 +128,8 @@ static void keyboard_callback(registers_t* regs) {
             gui_handle_keyboard(ascii);
         }
     }
+    
+    e0_prefix = 0;
 }
 
 void init_keyboard(void) {
