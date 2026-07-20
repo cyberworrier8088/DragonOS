@@ -68,11 +68,16 @@ static void keyboard_callback(registers_t* regs) {
     (void)regs;
     uint8_t scancode = inb(0x60);
 
-    // Call Doom and Quake raw keyboard hooks
-    extern void doom_handle_keyboard_raw(uint8_t scancode);
-    doom_handle_keyboard_raw(scancode);
-    extern void quake_handle_keyboard_raw(uint8_t scancode);
-    quake_handle_keyboard_raw(scancode);
+    extern int doom_running;
+    if (doom_running) {
+        extern void doom_handle_keyboard_raw(uint8_t scancode);
+        doom_handle_keyboard_raw(scancode);
+    }
+    extern int quake_running;
+    if (quake_running) {
+        extern void quake_handle_keyboard_raw(uint8_t scancode);
+        quake_handle_keyboard_raw(scancode);
+    }
 
     if (scancode == 0xE0) {
         e0_prefix = 1;

@@ -3,6 +3,7 @@
 #include "../libc/string.h"
 #include "../shell/gui.h"
 #include "../drivers/graphics.h"
+#include "../drivers/mouse.h"
 // No setjmp.h needed
 
 uint32_t* quake_window_buffer = 0;
@@ -10,11 +11,6 @@ int quake_running = 0;
 jmp_buf quake_exit_jmp;
 
 static uint32_t quake_palette[256];
-
-void QG_Init(void)
-{
-    // Initialization done before QG_Create
-}
 
 // Key Queue Implementation
 typedef struct {
@@ -25,6 +21,16 @@ typedef struct {
 static quake_key_event_t key_queue[256];
 static int key_head = 0;
 static int key_tail = 0;
+static int last_l_click = 0;
+
+void QG_Init(void)
+{
+    __asm__ volatile("cli");
+    key_head = key_tail = 0;
+    mouse_dx = mouse_dy = 0;
+    last_l_click = mouse_l_click;
+    __asm__ volatile("sti");
+}
 
 static void push_quake_key(int pressed, int key) {
     int next = (key_head + 1) % 256;
@@ -36,9 +42,7 @@ static void push_quake_key(int pressed, int key) {
 }
 
 void quake_handle_keyboard_raw(uint8_t scancode) {
-    static int e0_received = 0;
     if (scancode == 0xE0) {
-        e0_received = 1;
         return;
     }
     
@@ -89,7 +93,6 @@ void quake_handle_keyboard_raw(uint8_t scancode) {
 
         default: break;
     }
-    e0_received = 0;
     if (quake_key != 0) {
         push_quake_key(pressed, quake_key);
     }
@@ -104,18 +107,14 @@ int QG_GetKey(int *down, int *key)
     return 1;
 }
 
-extern int mouse_x, mouse_y;
-extern int mouse_dx;
-extern int mouse_dy;
-extern int mouse_l_click, mouse_r_click;
-static int last_l_click = 0;
-
 void QG_GetMouseMove(int *x, int *y)
 {
+    __asm__ volatile("cli");
     *x = mouse_dx;
     *y = mouse_dy;
     mouse_dx = 0;
     mouse_dy = 0;
+    __asm__ volatile("sti");
 }
 
 void QG_GetJoyAxes(float *axes)

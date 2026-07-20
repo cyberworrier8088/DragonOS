@@ -60,7 +60,10 @@ void	VID_Init (unsigned char *palette)
 	d_pzbuffer = zbuffer;
 
 	surfcache_size = D_SurfaceCacheForRes(BASEWIDTH, BASEHEIGHT);
-	surfcache = malloc(surfcache_size);
+	if (!surfcache)
+		surfcache = malloc(surfcache_size);
+	if (!surfcache)
+		Sys_Error ("Not enough memory for Quake surface cache");
 	D_InitCaches (surfcache, surfcache_size);
 
 	// quake generic
@@ -70,6 +73,7 @@ void	VID_Init (unsigned char *palette)
 void	VID_Shutdown (void)
 {
 		free(surfcache);
+		surfcache = NULL;
 }
 
 void	VID_Update (vrect_t *rects)

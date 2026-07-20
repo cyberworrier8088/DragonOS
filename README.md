@@ -36,6 +36,7 @@ Two classes of defects had to be resolved to run these engines stably inside a k
 
 1.  **Stack discipline.** The original engines assume a userspace stack of at least 1MB. Functions such as `R_EdgeDrawing` (~115KB of local span buffers), `R_RenderView_` (62.5KB warp buffer), `R_AliasDrawModel` (~60KB vertex arrays), and `COM_LoadPackFile` (~128KB directory buffer) allocate large arrays on the stack. The kernel now provides a dedicated 4MB stack, and the largest offenders were additionally converted to `static` or hunk allocations.
 2.  **Unclamped array indices.** The software rasterizer trusts its inputs: `D_PolysetDrawFinalVerts` and `D_PolysetRecursiveTriangle` index span tables with vertex coordinates that can be negative at the screen edge, and the particle system indexes color ramp tables with a float that can be NaN (NaN comparisons are always false, bypassing the original guard, and converting NaN to `int` yields `INT_MIN`). All such sites now bounds-check before indexing, in line with the project rule that all memory operations are bounds-checked.
+3.  **Input and timing integrity.** Keyboard events are delivered only to the running game, PS/2 overflow packets are discarded, and timer state is volatile across IRQ and kernel contexts. Quake clears input at launch, consumes mouse deltas atomically, and reuses its persistent memory allocations on later launches.
 
 ## Building and Compilation
 

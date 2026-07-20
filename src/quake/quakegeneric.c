@@ -37,7 +37,10 @@ void QG_Create(int argc, char *argv[])
 	/* 16MB: the 8MB minimum causes constant surface/model cache eviction
 	 * (Cache_Alloc thrash) which shows up as periodic frame hitches. */
 	parms.memsize = 16*1024*1024;
-	parms.membase = malloc (parms.memsize);
+	if (!parms.membase)
+		parms.membase = malloc (parms.memsize);
+	if (!parms.membase)
+		Sys_Error ("Not enough memory for Quake");
 	parms.basedir = ".";
 
     print_serial("[Quake] Calling COM_InitArgv...\n");

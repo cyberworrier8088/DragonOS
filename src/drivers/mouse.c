@@ -94,6 +94,7 @@ void mouse_handler(registers_t* r) {
         mouse_cycle = 0;
 
         uint8_t flags = mouse_byte[0];
+        if (flags & 0xC0) return;
         int dx = mouse_byte[1];
         int dy = mouse_byte[2];
 
