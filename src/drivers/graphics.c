@@ -217,6 +217,29 @@ static int point_in_rounded_rect(int px, int py, int rx, int ry, int rw, int rh,
     return 0;
 }
 
+/* Helper: check if point (px,py) is inside a top-rounded rect region */
+static int point_in_top_rounded_rect(int px, int py, int rx, int ry, int rw, int rh, int rad) {
+    /* If it's in the bottom part, it's always inside the rect (square corners) */
+    if (py >= ry + rh - rad) {
+        return (px >= rx && px < rx + rw && py < ry + rh);
+    }
+    /* Inner rectangle (no rounding needed for top part) */
+    if (px >= rx + rad && px < rx + rw - rad && py >= ry && py < ry + rh) return 1;
+    if (px >= rx && px < rx + rw && py >= ry + rad && py < ry + rh) return 1;
+
+    /* Check two top corners with circle distance */
+    int corners[2][2] = {
+        {rx + rad, ry + rad},               /* top-left */
+        {rx + rw - rad - 1, ry + rad}        /* top-right */
+    };
+    for (int c = 0; c < 2; c++) {
+        int dx = px - corners[c][0];
+        int dy = py - corners[c][1];
+        if (dx * dx + dy * dy <= rad * rad) return 1;
+    }
+    return 0;
+}
+
 void draw_rounded_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t radius, uint32_t color) {
     if (radius > w / 2) radius = w / 2;
     if (radius > h / 2) radius = h / 2;
@@ -297,6 +320,99 @@ void draw_rounded_rect_translucent(uint32_t x, uint32_t y, uint32_t w, uint32_t 
         for (uint32_t sx = start_x; sx < end_x; sx++) {
             if (sx >= screen_width) break;
             if (point_in_rounded_rect(sx, sy, x, y, w, h, radius)) {
+                uint32_t dest = back_buffer[sy * screen_width + sx];
+                uint32_t r_dst = (dest >> 16) & 0xFF;
+                uint32_t g_dst = (dest >> 8) & 0xFF;
+                uint32_t b_dst = dest & 0xFF;
+                uint32_t r = (r_src * alpha + r_dst * (255 - alpha)) / 255;
+                uint32_t g = (g_src * alpha + g_dst * (255 - alpha)) / 255;
+                uint32_t b = (b_src * alpha + b_dst * (255 - alpha)) / 255;
+                back_buffer[sy * screen_width + sx] = (r << 16) | (g << 8) | b;
+            }
+        }
+    }
+}
+
+void draw_top_rounded_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t radius, uint32_t color) {
+    if (radius > w / 2) radius = w / 2;
+    if (radius > h / 2) radius = h / 2;
+
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
+        if (sy >= screen_height) break;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
+            if (sx >= screen_width) break;
+            if (point_in_top_rounded_rect(sx, sy, x, y, w, h, radius)) {
+                back_buffer[sy * screen_width + sx] = color;
+            }
+        }
+    }
+}
+
+void draw_top_rounded_rect_outline(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t radius, uint32_t color) {
+    if (radius > w / 2) radius = w / 2;
+    if (radius > h / 2) radius = h / 2;
+
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
+        if (sy >= screen_height) break;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
+            if (sx >= screen_width) break;
+            int inside = point_in_top_rounded_rect(sx, sy, x, y, w, h, radius);
+            int inside_shrunk = point_in_top_rounded_rect(sx, sy, x + 1, y + 1, w - 2, h - 2, radius > 0 ? radius - 1 : 0);
+            if (inside && !inside_shrunk) {
+                back_buffer[sy * screen_width + sx] = color;
+            }
+        }
+    }
+}
+
+void draw_top_rounded_rect_translucent(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t radius, uint32_t color, uint8_t alpha) {
+    if (radius > w / 2) radius = w / 2;
+    if (radius > h / 2) radius = h / 2;
+    uint32_t r_src = (color >> 16) & 0xFF;
+    uint32_t g_src = (color >> 8) & 0xFF;
+    uint32_t b_src = color & 0xFF;
+
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
+        if (sy >= screen_height) break;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
+            if (sx >= screen_width) break;
+            if (point_in_top_rounded_rect(sx, sy, x, y, w, h, radius)) {
                 uint32_t dest = back_buffer[sy * screen_width + sx];
                 uint32_t r_dst = (dest >> 16) & 0xFF;
                 uint32_t g_dst = (dest >> 8) & 0xFF;

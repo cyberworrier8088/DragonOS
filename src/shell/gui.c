@@ -412,22 +412,22 @@ static void draw_window_chrome(gui_window_t* win) {
     int titlebar_h = 32;
     int radius = 8;
 
-    /* Drop shadow */
-    draw_rounded_rect_translucent(x + 2, y + 2, w, h, radius, 0x000000, 30);
-    draw_rounded_rect_translucent(x + 1, y + 1, w, h, radius, 0x000000, 15);
+    /* Drop shadow (top-rounded) */
+    draw_top_rounded_rect_translucent(x + 2, y + 2, w, h, radius, 0x000000, 30);
+    draw_top_rounded_rect_translucent(x + 1, y + 1, w, h, radius, 0x000000, 15);
 
-    /* Window body with rounded corners */
-    draw_rounded_rect(x, y, w, h, radius, WIN11_WINDOW_BG);
+    /* Window body with top-rounded corners, flat bottom */
+    draw_top_rounded_rect(x, y, w, h, radius, WIN11_WINDOW_BG);
 
     /* Titlebar */
     uint32_t tb_color = is_active ? WIN11_TITLEBAR : WIN11_TITLEBAR_INACTIVE;
-    draw_rounded_rect(x, y, w, titlebar_h, radius, tb_color);
+    draw_top_rounded_rect(x, y, w, titlebar_h, radius, tb_color);
     /* Fill in the bottom of titlebar (flat, no bottom rounding) */
     draw_rect(x, y + radius, w, titlebar_h - radius, tb_color);
 
     /* Border */
-    uint32_t border_c = is_active ? 0xCCCCCC : WIN11_BORDER;
-    draw_rounded_rect_outline(x, y, w, h, radius, border_c);
+    uint32_t border_c = is_active ? WIN11_ACCENT : WIN11_BORDER;
+    draw_top_rounded_rect_outline(x, y, w, h, radius, border_c);
 
     /* Title text */
     uint32_t title_c = is_active ? WIN11_TEXT_PRIMARY : WIN11_TEXT_SECONDARY;
@@ -446,8 +446,7 @@ static void draw_window_chrome(gui_window_t* win) {
 
     /* Draw close button background if hovered */
     if (mouse_in_close) {
-        draw_rect(close_x, btn_y, btn_w - radius, btn_h, close_bg);
-        draw_rounded_rect(close_x, btn_y, btn_w, btn_h, radius, close_bg);
+        draw_top_rounded_rect(close_x, btn_y, btn_w, btn_h, radius - 2, close_bg);
     }
     /* X symbol */
     int cx = close_x + btn_w / 2;
@@ -523,19 +522,19 @@ static void draw_window_content(gui_window_t* win) {
 
     if (win->id == 0) {
         /* ---- System Information ---- */
-        /* Info cards on light background */
+        /* Info cards on modern Windows 11 dark theme */
         draw_rect(x + 1, content_y, w - 2, content_h - 1, WIN11_WINDOW_BG);
 
         /* CPU card */
         draw_rounded_rect(x + 12, content_y + 12, w - 24, 36, 6, WIN11_CARD_BG);
         draw_rounded_rect_outline(x + 12, content_y + 12, w - 24, 36, 6, WIN11_CARD_BORDER);
         draw_string(x + 22, content_y + 14, "CPU", WIN11_ACCENT);
-        draw_string(x + 22, content_y + 30, "64-Bit Intel Emulator", WIN11_TEXT_PRIMARY);
+        draw_string(x + 22, content_y + 30, "Intel(R) Core(TM) i9 CPU @ 3.80GHz", WIN11_TEXT_PRIMARY);
 
-        /* RAM card */
-        draw_rounded_rect(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BG);
-        draw_rounded_rect_outline(x + 12, content_y + 56, w - 24, 36, 6, WIN11_CARD_BORDER);
-        draw_string(x + 22, content_y + 58, "Memory", WIN11_ACCENT);
+        /* RAM card with Visual Progress Bar */
+        draw_rounded_rect(x + 12, content_y + 54, w - 24, 52, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 54, w - 24, 52, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 56, "Memory", WIN11_ACCENT);
         
         char mem_str[64];
         char num_buf[32];
@@ -546,36 +545,48 @@ static void draw_window_content(gui_window_t* win) {
         int_to_ascii(pmm_total_memory / 1024 / 1024, num_buf);
         strcat(mem_str, num_buf);
         strcat(mem_str, " MB");
-        draw_string(x + 22, content_y + 74, mem_str, WIN11_TEXT_PRIMARY);
+        draw_string(x + 22, content_y + 72, mem_str, WIN11_TEXT_PRIMARY);
+
+        /* RAM fill bar rendering */
+        int bar_w = w - 48;
+        int bar_x = x + 24;
+        int bar_y = content_y + 90;
+        int fill_w = 0;
+        if (pmm_total_memory > 0) {
+            fill_w = (int)((pmm_used_memory * bar_w) / pmm_total_memory);
+            if (fill_w > bar_w) fill_w = bar_w;
+        }
+        draw_rounded_rect(bar_x, bar_y, bar_w, 6, 3, 0x333333); // bar track
+        draw_rounded_rect(bar_x, bar_y, fill_w, 6, 3, WIN11_ACCENT); // bar fill
 
         /* OS card */
-        draw_rounded_rect(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BG);
-        draw_rounded_rect_outline(x + 12, content_y + 100, w - 24, 36, 6, WIN11_CARD_BORDER);
-        draw_string(x + 22, content_y + 102, "System", WIN11_ACCENT);
-        draw_string(x + 22, content_y + 118, "DragonOS 64-bit Limine", WIN11_TEXT_PRIMARY);
+        draw_rounded_rect(x + 12, content_y + 112, w - 24, 36, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 112, w - 24, 36, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 114, "System", WIN11_ACCENT);
+        draw_string(x + 22, content_y + 130, "DragonOS 64-bit Core Edition", WIN11_TEXT_PRIMARY);
 
         /* PCI Devices card */
-        draw_rounded_rect(x + 12, content_y + 144, w - 24, 90, 6, WIN11_CARD_BG);
-        draw_rounded_rect_outline(x + 12, content_y + 144, w - 24, 90, 6, WIN11_CARD_BORDER);
-        draw_string(x + 22, content_y + 146, "PCI Hardware", WIN11_ACCENT);
+        draw_rounded_rect(x + 12, content_y + 154, w - 24, 90, 6, WIN11_CARD_BG);
+        draw_rounded_rect_outline(x + 12, content_y + 154, w - 24, 90, 6, WIN11_CARD_BORDER);
+        draw_string(x + 22, content_y + 156, "PCI Hardware", WIN11_ACCENT);
 
         int line_offset = 0;
         pci_device_t* curr = pci_devices_head;
         while (curr && line_offset < 4) {
             char pci_str[64];
             strcpy(pci_str, curr->class_name);
-            draw_string(x + 22, content_y + 162 + line_offset * 14, pci_str, WIN11_TEXT_PRIMARY);
+            draw_string(x + 22, content_y + 172 + line_offset * 14, pci_str, WIN11_TEXT_PRIMARY);
             curr = curr->next;
             line_offset++;
         }
         if (line_offset == 0) {
-            draw_string(x + 22, content_y + 162, "No devices scanned.", WIN11_TEXT_PRIMARY);
+            draw_string(x + 22, content_y + 172, "No devices scanned.", WIN11_TEXT_PRIMARY);
         }
     }
     else if (win->id == 1) {
         /* ---- Terminal ---- */
         int pad = 4;
-        draw_rounded_rect(x + pad, content_y + pad, w - pad * 2, content_h - pad * 2 - 2, 4, WIN11_TERMINAL_BG);
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x0C0C0C);
 
         /* Terminal text output */
         for (int line = 0; line <= term_line_count; line++) {
@@ -626,16 +637,19 @@ static void draw_window_content(gui_window_t* win) {
                 int by = grid_y + r * (btn_h + btn_gap);
                 char key = layout[r][c][0];
 
+                /* Hover highlight check */
+                int mouse_in_btn = (mouse_x >= bx && mouse_x < bx + btn_w && mouse_y >= by && mouse_y < by + btn_h);
+
                 uint32_t btn_bg;
                 uint32_t btn_fg;
                 if (key == '=') {
-                    btn_bg = WIN11_ACCENT;
+                    btn_bg = mouse_in_btn ? 0x0078D4 : WIN11_ACCENT;
                     btn_fg = 0xFFFFFF;
                 } else if (key >= '0' && key <= '9') {
-                    btn_bg = 0x3B3B3B;
+                    btn_bg = mouse_in_btn ? 0x4D4D4D : 0x3B3B3B;
                     btn_fg = 0xFFFFFF;
                 } else {
-                    btn_bg = 0x323232;
+                    btn_bg = mouse_in_btn ? 0x404040 : 0x323232;
                     btn_fg = 0xCCCCCC;
                 }
 
@@ -785,24 +799,41 @@ extern int board_2048[4][4];
 extern int score_2048;
 extern int game_over_2048;
 
+static int score_2048_best = 0;
+
 static void gui_draw_2048(int x, int y, int w, int h) {
+    if (score_2048 > score_2048_best) {
+        score_2048_best = score_2048;
+    }
+
     draw_rect(x, y, w, h, 0xFAF8EF); // Light beige background
 
-    // Score header
-    draw_string(x + 20, y + 20, "2048", 0x776E65);
-    char score_str[32] = "Score: ";
-    char num_buf[16];
-    int_to_ascii(score_2048, num_buf);
-    strcat(score_str, num_buf);
-    draw_string(x + 200, y + 20, score_str, 0x776E65);
+    /* Logo Panel */
+    draw_rounded_rect(x + 20, y + 10, 60, 30, 4, 0xEDC22E);
+    draw_string(x + 28, y + 16, "2048", 0xFFFFFF);
 
-    int grid_x = x + 20;
-    int grid_y = y + 50;
-    int cell_size = 65;
-    int padding = 8;
+    /* Score Panel */
+    draw_rounded_rect(x + 95, y + 10, 100, 30, 4, 0xBBADA0);
+    draw_string(x + 103, y + 12, "SCORE", 0xEEE4DA);
+    char score_str[16];
+    int_to_ascii(score_2048, score_str);
+    draw_string(x + 103, y + 22, score_str, 0xFFFFFF);
+
+    /* Best Score Panel */
+    draw_rounded_rect(x + 205, y + 10, 110, 30, 4, 0xBBADA0);
+    draw_string(x + 213, y + 12, "BEST SCORE", 0xEEE4DA);
+    char best_str[16];
+    int_to_ascii(score_2048_best, best_str);
+    draw_string(x + 213, y + 22, best_str, 0xFFFFFF);
+
+    int cell_size = 60;
+    int padding = 6;
+    int grid_w = (cell_size + padding) * 4 + padding; // 270 px width
+    int grid_x = x + (w - grid_w) / 2;
+    int grid_y = y + 48;
     
-    // Draw board
-    draw_rounded_rect(grid_x, grid_y, (cell_size + padding) * 4 + padding, (cell_size + padding) * 4 + padding, 5, 0xBBADA0);
+    /* Draw board background */
+    draw_rounded_rect(grid_x, grid_y, grid_w, grid_w, 6, 0xBBADA0);
 
     for (int row = 0; row < 4; row++) {
         for (int col = 0; col < 4; col++) {
@@ -824,7 +855,7 @@ static void gui_draw_2048(int x, int y, int w, int h) {
             else if (val == 2048) color = 0xEDC22E;
             else if (val > 2048) color = 0x3C3A32;
 
-            draw_rounded_rect(cx, cy, cell_size, cell_size, 3, color);
+            draw_rounded_rect(cx, cy, cell_size, cell_size, 4, color);
             
             if (val > 0) {
                 char v_str[16];
@@ -838,8 +869,11 @@ static void gui_draw_2048(int x, int y, int w, int h) {
     }
     
     if (game_over_2048) {
-        draw_string(grid_x + 100, grid_y + 160, "GAME OVER", 0xFF0000);
+        draw_rounded_rect_translucent(grid_x, grid_y, grid_w, grid_w, 6, 0xFAF8EF, 200);
+        draw_string(grid_x + grid_w / 2 - 40, grid_y + grid_w / 2 - 8, "GAME OVER", 0x776E65);
     }
+
+    draw_string(x + 16, y + h - 22, "WASD: Slide tiles | R: Reset Game", 0x776E65);
 }
 
 /* ============================================================
@@ -1461,10 +1495,12 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 void gui_handle_keyboard(char c) {
     if (active_win_id == 6) {
         extern void move_2048(int dir);
+        extern void init_2048(void);
         if (c == 'w' || c == 'W') move_2048(0);
         else if (c == 's' || c == 'S') move_2048(1);
         else if (c == 'a' || c == 'A') move_2048(2);
         else if (c == 'd' || c == 'D') move_2048(3);
+        else if (c == 'r' || c == 'R') init_2048();
         return;
     }
 
