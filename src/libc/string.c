@@ -2,10 +2,15 @@
 #include <stdint.h>
 
 size_t strlen(const char* s) {
-    size_t len = 0;
-    while (s[len] != '\0') {
-        len++;
-    }
+    size_t len;
+    asm volatile(
+        "repne scasb\n"
+        "not %%ecx\n"
+        "dec %%ecx\n"
+        : "=c" (len), "+D" (s)
+        : "c" (-1), "a" (0)
+        : "memory"
+    );
     return len;
 }
 
@@ -110,10 +115,15 @@ void* memcpy(void* dest, const void* src, size_t len) {
 }
 
 char* strcpy(char* dest, const char* src) {
-    char* d = dest;
-    while ((*d++ = *src++))
-        ;
-    return dest;
+    char* ret = dest;
+    size_t len = strlen(src) + 1; // Include null terminator
+    asm volatile(
+        "rep movsb\n"
+        : "+D" (dest), "+S" (src), "+c" (len)
+        :
+        : "memory"
+    );
+    return ret;
 }
 
 char* strcat(char* dest, const char* src) {

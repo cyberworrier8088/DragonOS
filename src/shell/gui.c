@@ -791,12 +791,12 @@ void gui_draw(void) {
         draw_window_content(win);
     }
 
-    /* 4. Start Menu (Windows 11 floating panel) */
+    /* 4. Start Menu (Ubuntu Applications Dropdown) */
     if (start_menu_open) {
         int sm_w = 340;
         int sm_h = 360;
-        int sm_x = ((int)screen_width - sm_w) / 2;
-        int sm_y = (int)screen_height - 48 - sm_h - 12;
+        int sm_x = 0;
+        int sm_y = 32;
 
         /* Shadow */
         draw_rounded_rect_translucent(sm_x + 3, sm_y + 3, sm_w, sm_h, 12, 0x000000, 40);
@@ -867,62 +867,50 @@ void gui_draw(void) {
         draw_vline(pw_x + 14, pw_y + 8, 6, 0xFFFFFF);
     }
 
-    /* 5. Taskbar (Windows 11 centered dark frosted glass) */
-    int tb_h = 48;
-    int tby = (int)screen_height - tb_h;
+    /* 5. Top Bar (Ubuntu GNOME style) */
+    int tb_h = 32;
+    int tby = 0;
 
-    /* Taskbar background with subtle transparency */
-    draw_rounded_rect_translucent(4, tby + 2, screen_width - 8, tb_h - 4, 8, WIN11_TASKBAR_BG, 230);
-    /* Top highlight line */
-    draw_hline(12, tby + 2, screen_width - 24, 0x333333);
+    /* Top Bar background */
+    draw_rect(0, tby, screen_width, tb_h, 0x1A1A1A);
+    draw_hline(0, tby + tb_h, screen_width, 0x2D2D2D);
 
-    /* Centered app icons */
-    int icon_count = 7; /* Start + 6 apps */
-    int icon_size = 32;
-    int icon_gap = 6;
-    int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
-    int icons_start_x = ((int)screen_width - total_icons_w) / 2;
+    /* "Activities" / "Applications" button at Top Left */
+    int start_x = 10;
+    int start_y = 4;
+    int mouse_in_start = (mouse_x >= start_x && mouse_x < start_x + 100 && mouse_y >= start_y && mouse_y < start_y + 24);
+    draw_rounded_rect(start_x, start_y, 100, 24, 4, mouse_in_start ? 0x333333 : 0x1A1A1A);
+    draw_string(start_x + 10, start_y + 4, "Applications", 0xFFFFFF);
 
-    /* Start button (Windows 11 4-pane logo) */
-    int start_x = icons_start_x;
-    int start_y = tby + (tb_h - icon_size) / 2;
-    int mouse_in_start = (mouse_x >= start_x && mouse_x < start_x + icon_size && mouse_y >= start_y && mouse_y < start_y + icon_size);
-    draw_rounded_rect(start_x, start_y, icon_size, icon_size, 4, mouse_in_start ? 0x444444 : 0x333333);
-    draw_win11_logo(start_x + icon_size / 2, start_y + icon_size / 2, WIN11_ACCENT_LIGHT);
-
-    /* App taskbar icons */
-    uint32_t app_icon_colors[6] = {0x0078D4, 0x0C0C0C, 0x3B3B3B, 0x1A1A1A, 0xC21807, 0xDF8A10};
-    char* app_icon_syms[6] = {"PC", ">_", "+-", "/\\", "DM", "FE"};
-
+    /* Active App Window list in top bar */
+    int icons_start_x = 130;
+    int icon_size = 24;
+    int icon_gap = 8;
+    
     for (int i = 0; i < MAX_WINDOWS; i++) {
         gui_window_t* w = &windows[i];
+        if (w->closed) continue;
 
-        int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
-        int iy = tby + (tb_h - icon_size) / 2;
+        int ix = icons_start_x + i * (icon_size + icon_gap);
+        int iy = 4;
 
         /* Icon background with hover */
         int mouse_in_app = (mouse_x >= ix && mouse_x < ix + icon_size && mouse_y >= iy && mouse_y < iy + icon_size);
-        uint32_t bg;
+        uint32_t bg = 0x1A1A1A;
         if (active_win_id == w->id) {
-            bg = mouse_in_app ? 0x4D4D4D : 0x3D3D3D;
+            bg = mouse_in_app ? 0x4D4D4D : 0x333333;
         } else {
-            bg = mouse_in_app ? 0x3D3D3D : 0x2D2D2D;
+            bg = mouse_in_app ? 0x3D3D3D : 0x1A1A1A;
         }
         draw_rounded_rect(ix, iy, icon_size, icon_size, 4, bg);
-
-        /* Small colored icon */
-        draw_rounded_rect(ix + 6, iy + 6, 20, 20, 3, app_icon_colors[i]);
-        draw_string(ix + 9, iy + 9, app_icon_syms[i], 0xFFFFFF);
-
-        /* Active indicator pill */
+        
+        /* Tiny colored square based on window ID */
+        uint32_t c = (w->id == 0) ? 0x0078D4 : (w->id == 1) ? 0x0C0C0C : (w->id == 2) ? 0x3B3B3B : (w->id == 4) ? 0xC21807 : 0xDF8A10;
+        draw_rect(ix + 6, iy + 6, 12, 12, c);
+        
+        /* Active indicator line at bottom */
         if (active_win_id == w->id) {
-            int pill_w = 16;
-            int pill_x = ix + (icon_size - pill_w) / 2;
-            int pill_y = iy + icon_size + 1;
-            draw_rounded_rect(pill_x, pill_y, pill_w, 3, 1, WIN11_ACCENT);
-        } else if (!w->minimized) {
-            /* Small dot for open-but-unfocused */
-            draw_rect(ix + icon_size / 2 - 2, iy + icon_size + 1, 4, 2, 0x606060);
+            draw_hline(ix + 2, iy + icon_size + 2, icon_size - 4, 0xDF8A10); /* Ubuntu orange */
         }
     }
 
@@ -957,29 +945,29 @@ void gui_draw(void) {
         time_str[11] = '\0';
     }
 
-    int tray_x = (int)screen_width - 140;
+    /* System tray (right side) */
+    int tray_x = (int)screen_width - 160;
 
     /* Wi-Fi icon */
     for (int arc = 0; arc < 3; arc++) {
         int r = 3 + arc * 3;
-        draw_circle(tray_x, tby + 30, r, 0xCCCCCC);
+        draw_circle(tray_x, tby + 16, r, 0xCCCCCC);
     }
-    draw_rect(tray_x - 1, tby + 31, 3, 8, WIN11_TASKBAR_BG); /* clear bottom half */
+    draw_rect(tray_x - 1, tby + 17, 3, 8, 0x1A1A1A); /* clear bottom half */
 
     /* Volume icon */
-    draw_rect(tray_x + 24, tby + 22, 4, 8, 0xCCCCCC);
-    draw_rect(tray_x + 28, tby + 20, 2, 12, 0xCCCCCC);
-    draw_circle(tray_x + 34, tby + 26, 5, 0xCCCCCC);
-    draw_rect(tray_x + 29, tby + 20, 6, 12, WIN11_TASKBAR_BG); /* mask inner circle */
+    draw_rect(tray_x + 24, tby + 12, 4, 8, 0xCCCCCC);
+    draw_rect(tray_x + 28, tby + 10, 2, 12, 0xCCCCCC);
+    draw_circle(tray_x + 34, tby + 16, 5, 0xCCCCCC);
+    draw_rect(tray_x + 29, tby + 10, 6, 12, 0x1A1A1A); /* mask inner circle */
 
     /* Battery indicator */
-    draw_rect_outline(tray_x + 48, tby + 20, 16, 10, 0xCCCCCC);
-    draw_rect(tray_x + 64, tby + 23, 2, 4, 0xCCCCCC);
-    draw_rect(tray_x + 50, tby + 22, 12, 6, WIN11_GREEN); /* Fill */
+    draw_rect_outline(tray_x + 48, tby + 11, 16, 10, 0xCCCCCC);
+    draw_rect(tray_x + 64, tby + 14, 2, 4, 0xCCCCCC);
+    draw_rect(tray_x + 50, tby + 13, 12, 6, 0x00FF00); /* Fill */
 
     /* Clock text */
-    draw_string(tray_x + 74, tby + 12, time_str, 0xCCCCCC);
-    draw_string(tray_x + 74, tby + 28, date_str, 0x999999);
+    draw_string(tray_x + 74, tby + 8, time_str, 0xFFFFFF);
 
     /* Update system monitor data */
     val_timer++;
@@ -1049,30 +1037,27 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
     if (click && !gui_was_clicked) {
         gui_was_clicked = 1;
 
-        int tb_h = 48;
-        int tby = (int)screen_height - tb_h;
+        int tb_h = 32;
+        int tby = 0;
 
-        /* Taskbar centered icon clicks */
-        int icon_count = 7;
-        int icon_size = 32;
-        int icon_gap = 6;
-        int total_icons_w = icon_count * icon_size + (icon_count - 1) * icon_gap;
-        int icons_start_x = ((int)screen_width - total_icons_w) / 2;
-
-        /* Start button click */
-        int start_x = icons_start_x;
-        int start_y = tby + (tb_h - icon_size) / 2;
-        if (mx >= start_x && mx < start_x + icon_size && my >= start_y && my < start_y + icon_size) {
+        /* Applications button click */
+        int start_x = 10;
+        int start_y = 4;
+        if (mx >= start_x && mx < start_x + 100 && my >= start_y && my < start_y + 24) {
             start_menu_open = !start_menu_open;
             return;
         }
 
-        /* App icon clicks */
+        /* App icon clicks in Top Bar */
+        int icons_start_x = 130;
+        int icon_size = 24;
+        int icon_gap = 8;
         for (int i = 0; i < MAX_WINDOWS; i++) {
             gui_window_t* w = &windows[i];
+            if (w->closed) continue;
 
-            int ix = icons_start_x + (i + 1) * (icon_size + icon_gap);
-            int iy = tby + (tb_h - icon_size) / 2;
+            int ix = icons_start_x + i * (icon_size + icon_gap);
+            int iy = 4;
 
             if (mx >= ix && mx < ix + icon_size && my >= iy && my < iy + icon_size) {
                 if (w->closed || w->minimized) {
@@ -1094,8 +1079,8 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         if (start_menu_open) {
             int sm_w = 340;
             int sm_h = 360;
-            int sm_x = ((int)screen_width - sm_w) / 2;
-            int sm_y = (int)screen_height - 48 - sm_h - 12;
+            int sm_x = 0;
+            int sm_y = 32;
 
             /* Power button click */
             int pw_x = sm_x + sm_w - 44;
