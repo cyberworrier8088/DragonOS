@@ -181,6 +181,8 @@ void kernel_main(void) {
 
     /* Initialize Window Manager GUI */
     init_gui();
+    extern void init_2048(void);
+    init_2048();
     print_serial("[DragonOS] Windows 11 Fluent Design Desktop initialized.\n");
 
     /* Enable hardware CPU interrupts */

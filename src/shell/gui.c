@@ -332,18 +332,17 @@ void init_gui(void) {
     windows[3].id = 3;
 
     /* 4: Doom */
-    windows[4].x = 80;
-    windows[4].y = 40;
+    windows[4].x = 100;
+    windows[4].y = 50;
     windows[4].w = 640;
-    windows[4].h = 432;
-    strcpy(windows[4].title, "DOOM");
+    windows[4].h = 400;
+    strcpy(windows[4].title, "Doom");
     windows[4].active = 0;
     windows[4].closed = 1;
     windows[4].minimized = 0;
     windows[4].dragging = 0;
     windows[4].id = 4;
 
-    /* 5: File Explorer */
     windows[5].x = 160;
     windows[5].y = 120;
     windows[5].w = 460;
@@ -354,6 +353,18 @@ void init_gui(void) {
     windows[5].minimized = 0;
     windows[5].dragging = 0;
     windows[5].id = 5;
+
+    /* 6: 2048 */
+    windows[6].x = 200;
+    windows[6].y = 100;
+    windows[6].w = 340;
+    windows[6].h = 380;
+    strcpy(windows[6].title, "2048");
+    windows[6].active = 0;
+    windows[6].closed = 1;
+    windows[6].minimized = 0;
+    windows[6].dragging = 0;
+    windows[6].id = 6;
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         windows[i].maximized = 0;
@@ -501,6 +512,8 @@ static void draw_desktop_icons(void) {
 /* ============================================================
  * Draw Window Content
  * ============================================================ */
+static void gui_draw_2048(int x, int y, int w, int h);
+
 static void draw_window_content(gui_window_t* win) {
     int x = win->x, y = win->y, w = win->w, h = win->h;
     int content_y = y + 32;
@@ -759,6 +772,69 @@ static void draw_window_content(gui_window_t* win) {
             strcat(size_str, " B");
             draw_string(x + 350, ry + 1, size_str, 0x888888);
         }
+    } else if (win->id == 6) {
+        gui_draw_2048(x, content_y, w, content_h);
+    }
+}
+
+extern int board_2048[4][4];
+extern int score_2048;
+extern int game_over_2048;
+
+static void gui_draw_2048(int x, int y, int w, int h) {
+    draw_rect(x, y, w, h, 0xFAF8EF); // Light beige background
+
+    // Score header
+    draw_string(x + 20, y + 20, "2048", 0x776E65);
+    char score_str[32] = "Score: ";
+    char num_buf[16];
+    int_to_ascii(score_2048, num_buf);
+    strcat(score_str, num_buf);
+    draw_string(x + 200, y + 20, score_str, 0x776E65);
+
+    int grid_x = x + 20;
+    int grid_y = y + 50;
+    int cell_size = 65;
+    int padding = 8;
+    
+    // Draw board
+    draw_rounded_rect(grid_x, grid_y, (cell_size + padding) * 4 + padding, (cell_size + padding) * 4 + padding, 5, 0xBBADA0);
+
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+            int cx = grid_x + padding + col * (cell_size + padding);
+            int cy = grid_y + padding + row * (cell_size + padding);
+            
+            int val = board_2048[row][col];
+            uint32_t color = 0xCDC1B4; // empty
+            if (val == 2) color = 0xEEE4DA;
+            else if (val == 4) color = 0xEDE0C8;
+            else if (val == 8) color = 0xF2B179;
+            else if (val == 16) color = 0xF59563;
+            else if (val == 32) color = 0xF67C5F;
+            else if (val == 64) color = 0xF65E3B;
+            else if (val == 128) color = 0xEDCF72;
+            else if (val == 256) color = 0xEDCC61;
+            else if (val == 512) color = 0xEDC850;
+            else if (val == 1024) color = 0xEDC53F;
+            else if (val == 2048) color = 0xEDC22E;
+            else if (val > 2048) color = 0x3C3A32;
+
+            draw_rounded_rect(cx, cy, cell_size, cell_size, 3, color);
+            
+            if (val > 0) {
+                char v_str[16];
+                int_to_ascii(val, v_str);
+                uint32_t t_color = (val <= 4) ? 0x776E65 : 0xF9F6F2;
+                int text_x = cx + cell_size / 2 - (strlen(v_str) * 8) / 2;
+                int text_y = cy + cell_size / 2 - 8;
+                draw_string(text_x, text_y, v_str, t_color);
+            }
+        }
+    }
+    
+    if (game_over_2048) {
+        draw_string(grid_x + 100, grid_y + 160, "GAME OVER", 0xFF0000);
     }
 }
 
@@ -816,12 +892,14 @@ void gui_draw(void) {
         draw_string(sm_x + 20, sm_y + 60, "Pinned", 0xFFFFFF);
         draw_string(sm_x + sm_w - 80, sm_y + 60, "All apps >", 0x60CDFF);
 
-        /* Pinned apps grid (2x2) */
-        struct { const char* name; uint32_t color; const char* sym; } pinned[4] = {
-            {"System",   0x0078D4, "PC"},
-            {"Terminal", 0x0C0C0C, ">_"},
-            {"Calc",     0x3B3B3B, "+-"},
-            {"Monitor",  0x1A1A1A, "/\\"},
+        /* Pinned apps grid (3x2) */
+        struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[6] = {
+            {"System",   0x0078D4, "PC",  0},
+            {"Terminal", 0x0C0C0C, ">_",  1},
+            {"Calc",     0x3B3B3B, "+-",  2},
+            {"Explorer", 0xDF8A10, "FE",  5},
+            {"Doom",     0xC21807, "DM",  4},
+            {"2048",     0xEDC22E, "2K",  6},
         };
 
         int grid_x = sm_x + 20;
@@ -830,7 +908,7 @@ void gui_draw(void) {
         int tile_h = 54;
         int gap = 8;
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 6; i++) {
             int col = i % 2;
             int row = i / 2;
             int tx = grid_x + col * (tile_w + gap);
@@ -905,7 +983,7 @@ void gui_draw(void) {
         draw_rounded_rect(ix, iy, icon_size, icon_size, 4, bg);
         
         /* Tiny colored square based on window ID */
-        uint32_t c = (w->id == 0) ? 0x0078D4 : (w->id == 1) ? 0x0C0C0C : (w->id == 2) ? 0x3B3B3B : (w->id == 4) ? 0xC21807 : 0xDF8A10;
+        uint32_t c = (w->id == 0) ? 0x0078D4 : (w->id == 1) ? 0x0C0C0C : (w->id == 2) ? 0x3B3B3B : (w->id == 4) ? 0xC21807 : (w->id == 6) ? 0xEDC22E : 0xDF8A10;
         draw_rect(ix + 6, iy + 6, 12, 12, c);
         
         /* Active indicator line at bottom */
@@ -1098,16 +1176,26 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             int tile_h = 54;
             int gap = 8;
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 6; i++) {
                 int col = i % 2;
                 int row = i / 2;
                 int tx = grid_x + col * (tile_w + gap);
                 int ty = grid_y + row * (tile_h + gap);
 
                 if (mx >= tx && mx < tx + tile_w && my >= ty && my < ty + tile_h) {
-                    windows[i].closed = 0;
-                    windows[i].minimized = 0;
-                    active_win_id = i;
+                    int win_id = -1;
+                    if (i == 0) win_id = 0;
+                    else if (i == 1) win_id = 1;
+                    else if (i == 2) win_id = 2;
+                    else if (i == 3) win_id = 5;
+                    else if (i == 4) win_id = 4;
+                    else if (i == 5) win_id = 6;
+                    
+                    if (win_id >= 0) {
+                        windows[win_id].closed = 0;
+                        windows[win_id].minimized = 0;
+                        active_win_id = win_id;
+                    }
                     start_menu_open = 0;
                     return;
                 }
@@ -1367,6 +1455,15 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
  * Keyboard character routing to focused Terminal window
  * ============================================================ */
 void gui_handle_keyboard(char c) {
+    if (active_win_id == 6) {
+        extern void move_2048(int dir);
+        if (c == 'w' || c == 'W') move_2048(0);
+        else if (c == 's' || c == 'S') move_2048(1);
+        else if (c == 'a' || c == 'A') move_2048(2);
+        else if (c == 'd' || c == 'D') move_2048(3);
+        return;
+    }
+
     if (active_win_id != 1) return;
 
     if (c == '\n') {

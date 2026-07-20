@@ -57,6 +57,7 @@ OBJS = boot.o \
        src/shell/gui.o \
        src/shell/minilua.o \
        src/shell/minitcc.o \
+       src/2048/2048.o \
        kernel.o
 
 .PHONY: all clean verify run run-curses run-nographic
@@ -80,6 +81,9 @@ src/shell/%.o: src/shell/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 src/fs/%.o: src/fs/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+src/2048/%.o: src/2048/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 src/doom/%.o: src/doom/%.c
