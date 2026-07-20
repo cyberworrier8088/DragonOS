@@ -59,7 +59,16 @@ char* getenv(const char* name) {
 }
 
 int abs(int x) {
-    return (x < 0) ? -x : x;
+    int ret;
+    asm volatile(
+        "cdq\n"
+        "xorl %%edx, %%eax\n"
+        "subl %%edx, %%eax\n"
+        : "=a"(ret)
+        : "a"(x)
+        : "edx"
+    );
+    return ret;
 }
 
 int atoi(const char* str) {

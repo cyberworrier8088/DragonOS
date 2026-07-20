@@ -54,9 +54,13 @@ void draw_pixel_alpha(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha) {
     uint32_t r_dst = (dest >> 16) & 0xFF;
     uint32_t g_dst = (dest >> 8) & 0xFF;
     uint32_t b_dst = dest & 0xFF;
-    uint32_t r = (r_src * alpha + r_dst * (255 - alpha)) / 255;
-    uint32_t g = (g_src * alpha + g_dst * (255 - alpha)) / 255;
-    uint32_t b = (b_src * alpha + b_dst * (255 - alpha)) / 255;
+    
+    // Optimize: Replace slow division (/ 255) with fast bitwise shift (>> 8)
+    uint32_t inv_alpha = 255 - alpha;
+    uint32_t r = (r_src * alpha + r_dst * inv_alpha) >> 8;
+    uint32_t g = (g_src * alpha + g_dst * inv_alpha) >> 8;
+    uint32_t b = (b_src * alpha + b_dst * inv_alpha) >> 8;
+    
     back_buffer[y * screen_width + x] = (r << 16) | (g << 8) | b;
 }
 

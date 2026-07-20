@@ -42,25 +42,35 @@ void int_to_ascii(int n, char str[]) {
 }
 
 int strcmp(const char* s1, const char* s2) {
-    int i;
-    for (i = 0; s1[i] == s2[i]; i++) {
-        if (s1[i] == '\0') {
-            return 0;
-        }
-    }
-    return s1[i] - s2[i];
+    int ret;
+    size_t len = strlen(s1) + 1;
+    asm volatile(
+        "repz cmpsb\n"
+        "je 1f\n"
+        "sbb %%eax, %%eax\n"
+        "orl $1, %%eax\n"
+        "1:\n"
+        : "=a"(ret), "+D"(s1), "+S"(s2), "+c"(len)
+        : "0"(0)
+        : "memory"
+    );
+    return ret;
 }
 
 int strncmp(const char* s1, const char* s2, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        if (s1[i] != s2[i]) {
-            return s1[i] - s2[i];
-        }
-        if (s1[i] == '\0') {
-            return 0;
-        }
-    }
-    return 0;
+    if (n == 0) return 0;
+    int ret;
+    asm volatile(
+        "repz cmpsb\n"
+        "je 1f\n"
+        "sbb %%eax, %%eax\n"
+        "orl $1, %%eax\n"
+        "1:\n"
+        : "=a"(ret), "+D"(s1), "+S"(s2), "+c"(n)
+        : "0"(0)
+        : "memory"
+    );
+    return ret;
 }
 
 void append(char s[], char n) {
