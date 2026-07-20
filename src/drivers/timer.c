@@ -32,3 +32,13 @@ void init_timer(uint32_t frequency) {
 uint32_t get_ticks(void) {
     return tick;
 }
+
+void sleep_ms(uint32_t ms) {
+    uint32_t start_tick = tick;
+    uint32_t ticks_to_wait = ms / 10;
+    if (ticks_to_wait == 0 && ms > 0) ticks_to_wait = 1;
+    
+    while (tick - start_tick < ticks_to_wait) {
+        __asm__ volatile("hlt");
+    }
+}

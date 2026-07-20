@@ -75,20 +75,27 @@ void kfree(void* ptr) {
     heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - sizeof(heap_block_t));
     block->free = 1;
     
-    // Basic coalescing of adjacent free blocks (forward)
+    // Coalesce with next block if contiguous and free
+    if (block->next && block->next->free) {
+        if ((uint8_t*)block + sizeof(heap_block_t) + block->size == (uint8_t*)block->next) {
+            block->size += sizeof(heap_block_t) + block->next->size;
+            block->next = block->next->next;
+        }
+    }
+
+    // Coalesce with previous block if contiguous and free
     heap_block_t* curr = heap_head;
     while (curr) {
-        if (curr->free && curr->next && curr->next->free) {
-            // Check if contiguous in memory
-            if ((uint8_t*)curr + sizeof(heap_block_t) + curr->size == (uint8_t*)curr->next) {
-                curr->size += sizeof(heap_block_t) + curr->next->size;
-                curr->next = curr->next->next;
-            } else {
-                curr = curr->next;
+        if (curr->next == block) {
+            if (curr->free) {
+                if ((uint8_t*)curr + sizeof(heap_block_t) + curr->size == (uint8_t*)block) {
+                    curr->size += sizeof(heap_block_t) + block->size;
+                    curr->next = block->next;
+                }
             }
-        } else {
-            curr = curr->next;
+            break;
         }
+        curr = curr->next;
     }
 }
 

@@ -198,5 +198,9 @@ void kernel_main(void) {
         }
         gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
         gui_draw();
+        
+        // Cap frame rate to ~60 FPS and process hardware interrupts efficiently
+        extern void sleep_ms(uint32_t ms);
+        sleep_ms(16);
     }
 }
