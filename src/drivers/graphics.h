@@ -14,6 +14,8 @@ extern uint32_t  screen_pitch;
 #define FONT_HEIGHT 18
 
 void graphics_init(uint64_t phys_addr, uint32_t width, uint32_t height, uint32_t pitch);
+void graphics_set_clip(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+void graphics_clear_clip(void);
 
 /* Core drawing primitives */
 void draw_pixel(uint32_t x, uint32_t y, uint32_t color);

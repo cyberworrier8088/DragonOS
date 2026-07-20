@@ -38,14 +38,38 @@ void graphics_init(uint64_t phys_addr, uint32_t width, uint32_t height, uint32_t
     memset(back_buffer, 0, screen_width * screen_height * 4);
 }
 
+static int clip_enabled = 0;
+static uint32_t clip_x1 = 0;
+static uint32_t clip_y1 = 0;
+static uint32_t clip_x2 = 0;
+static uint32_t clip_y2 = 0;
+
+void graphics_set_clip(uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    clip_enabled = 1;
+    clip_x1 = x;
+    clip_y1 = y;
+    clip_x2 = x + w;
+    clip_y2 = y + h;
+}
+
+void graphics_clear_clip(void) {
+    clip_enabled = 0;
+}
+
 /* ========== Core Drawing Primitives ========== */
 
 void draw_pixel(uint32_t x, uint32_t y, uint32_t color) {
+    if (clip_enabled) {
+        if (x < clip_x1 || x >= clip_x2 || y < clip_y1 || y >= clip_y2) return;
+    }
     if (x >= screen_width || y >= screen_height) return;
     back_buffer[y * screen_width + x] = color;
 }
 
 void draw_pixel_alpha(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha) {
+    if (clip_enabled) {
+        if (x < clip_x1 || x >= clip_x2 || y < clip_y1 || y >= clip_y2) return;
+    }
     if (x >= screen_width || y >= screen_height) return;
     uint32_t r_src = (color >> 16) & 0xFF;
     uint32_t g_src = (color >> 8) & 0xFF;
@@ -65,6 +89,21 @@ void draw_pixel_alpha(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha) {
 }
 
 void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t color) {
+    if (clip_enabled) {
+        if (x >= clip_x2 || y >= clip_y2) return;
+        if (x < clip_x1) {
+            if (w <= clip_x1 - x) return;
+            w -= (clip_x1 - x);
+            x = clip_x1;
+        }
+        if (y < clip_y1) {
+            if (h <= clip_y1 - y) return;
+            h -= (clip_y1 - y);
+            y = clip_y1;
+        }
+        if (x + w > clip_x2) w = clip_x2 - x;
+        if (y + h > clip_y2) h = clip_y2 - y;
+    }
     if (x >= screen_width || y >= screen_height) return;
     if (x + w > screen_width) w = screen_width - x;
     if (y + h > screen_height) h = screen_height - y;
@@ -182,11 +221,21 @@ void draw_rounded_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t 
     if (radius > w / 2) radius = w / 2;
     if (radius > h / 2) radius = h / 2;
 
-    for (uint32_t py = 0; py < h; py++) {
-        uint32_t sy = y + py;
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
         if (sy >= screen_height) break;
-        for (uint32_t px = 0; px < w; px++) {
-            uint32_t sx = x + px;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
             if (sx >= screen_width) break;
             if (point_in_rounded_rect(sx, sy, x, y, w, h, radius)) {
                 back_buffer[sy * screen_width + sx] = color;
@@ -199,11 +248,21 @@ void draw_rounded_rect_outline(uint32_t x, uint32_t y, uint32_t w, uint32_t h, u
     if (radius > w / 2) radius = w / 2;
     if (radius > h / 2) radius = h / 2;
 
-    for (uint32_t py = 0; py < h; py++) {
-        uint32_t sy = y + py;
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
         if (sy >= screen_height) break;
-        for (uint32_t px = 0; px < w; px++) {
-            uint32_t sx = x + px;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
             if (sx >= screen_width) break;
             int inside = point_in_rounded_rect(sx, sy, x, y, w, h, radius);
             int inside_shrunk = point_in_rounded_rect(sx, sy, x + 1, y + 1, w - 2, h - 2, radius > 0 ? radius - 1 : 0);
@@ -221,11 +280,21 @@ void draw_rounded_rect_translucent(uint32_t x, uint32_t y, uint32_t w, uint32_t 
     uint32_t g_src = (color >> 8) & 0xFF;
     uint32_t b_src = color & 0xFF;
 
-    for (uint32_t py = 0; py < h; py++) {
-        uint32_t sy = y + py;
+    uint32_t start_y = y;
+    uint32_t end_y = y + h;
+    uint32_t start_x = x;
+    uint32_t end_x = x + w;
+
+    if (clip_enabled) {
+        if (start_y < clip_y1) start_y = clip_y1;
+        if (end_y > clip_y2) end_y = clip_y2;
+        if (start_x < clip_x1) start_x = clip_x1;
+        if (end_x > clip_x2) end_x = clip_x2;
+    }
+
+    for (uint32_t sy = start_y; sy < end_y; sy++) {
         if (sy >= screen_height) break;
-        for (uint32_t px = 0; px < w; px++) {
-            uint32_t sx = x + px;
+        for (uint32_t sx = start_x; sx < end_x; sx++) {
             if (sx >= screen_width) break;
             if (point_in_rounded_rect(sx, sy, x, y, w, h, radius)) {
                 uint32_t dest = back_buffer[sy * screen_width + sx];

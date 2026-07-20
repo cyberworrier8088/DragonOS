@@ -519,6 +519,8 @@ static void draw_window_content(gui_window_t* win) {
     int content_y = y + 32;
     int content_h = h - 32;
 
+    graphics_set_clip(x + 1, content_y, w - 2, content_h - 1);
+
     if (win->id == 0) {
         /* ---- System Information ---- */
         /* Info cards on light background */
@@ -775,6 +777,8 @@ static void draw_window_content(gui_window_t* win) {
     } else if (win->id == 6) {
         gui_draw_2048(x, content_y, w, content_h);
     }
+    
+    graphics_clear_clip();
 }
 
 extern int board_2048[4][4];
