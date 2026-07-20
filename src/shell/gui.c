@@ -65,7 +65,6 @@ static void gui_launch_quake(void) {
 /* Clock / Time counter */
 static uint32_t ticks_counter = 0;
 static char time_str[12] = "12:00 PM";
-static char date_str[16] = "Jul 19";
 
 /* Terminal Window Output Buffer */
 static char term_lines[18][80];
@@ -504,17 +503,6 @@ void init_gui(void) {
 
 }
 
-/* ============================================================
- * Draw Windows 11 Start Logo (4-pane grid)
- * ============================================================ */
-static void draw_win11_logo(int cx, int cy, uint32_t color) {
-    int s = 4; /* square size */
-    int g = 2; /* gap */
-    draw_rect(cx - s - g/2, cy - s - g/2, s, s, color);
-    draw_rect(cx + g/2,     cy - s - g/2, s, s, color);
-    draw_rect(cx - s - g/2, cy + g/2,     s, s, color);
-    draw_rect(cx + g/2,     cy + g/2,     s, s, color);
-}
 
 /* ============================================================
  * Draw a Windows 11 style window
@@ -1327,9 +1315,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 
     if (click && !gui_was_clicked) {
         gui_was_clicked = 1;
-
-        int tb_h = 32;
-        int tby = 0;
 
         /* Applications button click */
         int start_x = 10;
