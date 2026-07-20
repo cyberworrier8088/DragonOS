@@ -237,22 +237,69 @@ void init_vfs(void) {
 }
 
 int open(const char* pathname, int flags) {
+    int found_index = -1;
     for (int i = 0; i < vfs_node_count; i++) {
         if (strcmp(vfs_nodes[i].name, pathname) == 0) {
-            // Find free File Descriptor
-            for (int fd = 3; fd < MAX_FD; fd++) {
-                if (!fd_table[fd].used) {
-                    fd_table[fd].node = &vfs_nodes[i];
-                    fd_table[fd].offset = 0;
-                    fd_table[fd].flags = flags;
-                    fd_table[fd].used = 1;
-                    return fd;
-                }
-            }
-            return -1; // No free file descriptors
+            found_index = i;
+            break;
         }
     }
-    return -1; // File not found
+
+    if (found_index == -1) {
+        if (flags & O_CREAT) {
+            // Create a 64KB file in RAM by default (standard buffer size)
+            vfs_create_file(pathname, 64 * 1024);
+            found_index = vfs_node_count - 1;
+        } else {
+            return -1; // File not found
+        }
+    }
+
+    vfs_node_t* node = &vfs_nodes[found_index];
+
+    if (flags & O_TRUNC) {
+        if (node->private_data) {
+            memset(node->private_data, 0, node->size);
+        }
+    }
+
+    // Find free File Descriptor
+    for (int fd = 3; fd < MAX_FD; fd++) {
+        if (!fd_table[fd].used) {
+            fd_table[fd].node = node;
+            fd_table[fd].offset = (flags & O_APPEND) ? node->size : 0;
+            fd_table[fd].flags = flags;
+            fd_table[fd].used = 1;
+            return fd;
+        }
+    }
+    return -1; // No free file descriptors
+}
+
+int unlink(const char* pathname) {
+    for (int i = 0; i < vfs_node_count; i++) {
+        if (strcmp(vfs_nodes[i].name, pathname) == 0) {
+            vfs_node_t* node = &vfs_nodes[i];
+            if (node->private_data && node->write == dynamic_mem_write) {
+                kfree(node->private_data);
+            }
+            
+            // Remove from vfs_nodes by shifting
+            for (int j = i; j < vfs_node_count - 1; j++) {
+                vfs_nodes[j] = vfs_nodes[j + 1];
+            }
+            vfs_node_count--;
+
+            // Close all active file descriptors using this node
+            for (int fd = 0; fd < MAX_FD; fd++) {
+                if (fd_table[fd].used && fd_table[fd].node == node) {
+                    fd_table[fd].used = 0;
+                }
+            }
+            return 0;
+        }
+    }
+    return -1;
 }
 
 int close(int fd) {

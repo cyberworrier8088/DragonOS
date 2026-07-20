@@ -139,6 +139,9 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string("  echo <msg>  Echo input text back\n");
         gui_write_string("  ls          List mounted VFS files\n");
         gui_write_string("  cat <file>  Print file content\n");
+        gui_write_string("  touch <f>   Create an empty file\n");
+        gui_write_string("  write <f> <t> Write/Append text to file\n");
+        gui_write_string("  rm <file>   Remove file from VFS\n");
         gui_write_string("  stat <file> Print file metadata\n");
         gui_write_string("  lua [file]  Run Lua script or hello snippet\n");
         gui_write_string("  tcc [file]  Compile/run C code or test suite\n");
@@ -195,6 +198,60 @@ static void gui_execute_command(const char* cmd) {
             gui_write_string("\n");
         } else {
             gui_write_string("cat: error opening file: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        }
+    } else if (strncmp(cmd, "touch ", 6) == 0) {
+        const char* filepath = cmd + 6;
+        while (*filepath == ' ') filepath++;
+        int fd = open(filepath, O_CREAT | O_WRONLY);
+        if (fd >= 0) {
+            close(fd);
+            gui_write_string("Created file: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        } else {
+            gui_write_string("touch: failed to create: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        }
+    } else if (strncmp(cmd, "write ", 6) == 0) {
+        const char* p = cmd + 6;
+        while (*p == ' ') p++;
+        const char* filepath = p;
+        while (*p && *p != ' ') p++;
+        int path_len = p - filepath;
+        if (path_len > 0 && *p == ' ') {
+            char path[64];
+            if (path_len >= 64) path_len = 63;
+            memcpy(path, filepath, path_len);
+            path[path_len] = '\0';
+            
+            const char* text = p + 1;
+            int fd = open(path, O_CREAT | O_WRONLY | O_APPEND);
+            if (fd >= 0) {
+                write(fd, text, strlen(text));
+                write(fd, "\n", 1);
+                close(fd);
+                gui_write_string("Wrote to file ");
+                gui_write_string(path);
+                gui_write_string("\n");
+            } else {
+                gui_write_string("write: failed to open file\n");
+            }
+        } else {
+            gui_write_string("Usage: write <file> <text>\n");
+        }
+    } else if (strncmp(cmd, "rm ", 3) == 0) {
+        const char* filepath = cmd + 3;
+        while (*filepath == ' ') filepath++;
+        extern int unlink(const char* pathname);
+        if (unlink(filepath) == 0) {
+            gui_write_string("Removed file: ");
+            gui_write_string(filepath);
+            gui_write_string("\n");
+        } else {
+            gui_write_string("rm: cannot remove: ");
             gui_write_string(filepath);
             gui_write_string("\n");
         }

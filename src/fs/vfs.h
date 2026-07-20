@@ -21,6 +21,13 @@ typedef struct {
     int used;
 } file_desc_t;
 
+#define O_RDONLY 0
+#define O_WRONLY 1
+#define O_RDWR   2
+#define O_CREAT  0x0040
+#define O_TRUNC  0x0200
+#define O_APPEND 0x0400
+
 void init_vfs(void);
 void vfs_register_file(const char* name, void* buffer, uint32_t size);
 void vfs_create_file(const char* name, uint32_t size);
@@ -31,6 +38,7 @@ int close(int fd);
 int read(int fd, void* buf, int count);
 int write(int fd, const void* buf, int count);
 int lseek(int fd, int offset, int whence);
+int unlink(const char* pathname);
 
 struct stat {
     uint32_t st_dev;
