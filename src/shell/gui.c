@@ -11,9 +11,16 @@
 #include "fs/vfs.h"
 
 #include "../libc/stdlib.h"
+// No setjmp.h needed
 
 gui_window_t* windows;
 int active_win_id = -1;
+
+extern int doom_running;
+extern uint32_t* doom_window_buffer;
+extern int quake_running;
+extern uint32_t* quake_window_buffer;
+extern jmp_buf quake_exit_jmp;
 
 uint32_t* doom_window_buffer = 0;
 int doom_running = 0;
@@ -423,6 +430,18 @@ void init_gui(void) {
     windows[6].dragging = 0;
     windows[6].id = 6;
 
+    /* 7: Quake */
+    windows[7].x = 100;
+    windows[7].y = 50;
+    windows[7].w = 640;
+    windows[7].h = 512;
+    strcpy(windows[7].title, "Quake 1");
+    windows[7].active = 0;
+    windows[7].closed = 1;
+    windows[7].minimized = 0;
+    windows[7].dragging = 0;
+    windows[7].id = 7;
+
     for (int i = 0; i < MAX_WINDOWS; i++) {
         windows[i].maximized = 0;
         windows[i].old_x = windows[i].x;
@@ -432,6 +451,9 @@ void init_gui(void) {
     }
 
     doom_window_buffer = (uint32_t*)kmalloc(640 * 400 * 4);
+    
+    extern uint32_t* quake_window_buffer;
+    quake_window_buffer = (uint32_t*)kmalloc(640 * 480 * 4);
 
     /* Initialize terminal buffer */
     memset(term_lines, 0, sizeof(term_lines));
@@ -446,6 +468,8 @@ void init_gui(void) {
     }
 
     strcpy(calc_buf, "0");
+
+
 }
 
 /* ============================================================
@@ -537,16 +561,17 @@ static void draw_window_chrome(gui_window_t* win) {
  * ============================================================ */
 static void draw_desktop_icons(void) {
     /* Icon layout: vertical stack on left side */
-    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[6] = {
+    struct { const char* label; uint32_t bg; uint32_t fg; const char* symbol; } icons[7] = {
         {"System",   0x0078D4, 0xFFFFFF, "PC"},
         {"Terminal", 0x0C0C0C, 0x00FF00, ">_"},
         {"Calc",     0x202020, 0xFFFFFF, "+-"},
         {"Monitor",  0x1A1A1A, 0x00CC6A, "/\\"},
         {"DOOM",     0xC21807, 0xFFFFFF, "DM"},
         {"Explorer", 0xDF8A10, 0xFFFFFF, "FE"},
+        {"Quake 1",  0x8B4513, 0xFFFFFF, "Q1"},
     };
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         int ix = 30;
         int iy = 30 + i * 90;
 
@@ -778,14 +803,75 @@ static void draw_window_content(gui_window_t* win) {
             int dy = (content_h - 400) / 2;
             if (dx < 0) dx = 0;
             if (dy < 0) dy = 0;
-            for (int r = 0; r < 400; r++) {
-                if (content_y + dy + r >= content_y + content_h) break;
-                uint32_t* dest_row = &back_buffer[(content_y + dy + r) * screen_width + (x + dx)];
-                uint32_t* src_row = &doom_window_buffer[r * 640];
-                memcpy(dest_row, src_row, 640 * 4);
+            
+            int px = x + dx;
+            int py = content_y + dy;
+            int src_x = 0;
+            int copy_w = 640;
+            
+            if (px < 0) {
+                src_x = -px;
+                copy_w -= src_x;
+                px = 0;
+            }
+            if (px + copy_w > (int)screen_width) {
+                copy_w = (int)screen_width - px;
+            }
+            
+            if (copy_w > 0) {
+                for (int r = 0; r < 400; r++) {
+                    int screen_y = py + r;
+                    if (screen_y < 0) continue;
+                    if (screen_y >= content_y + content_h) break;
+                    if (screen_y >= (int)screen_height) break;
+                    
+                    uint32_t* dest_row = &back_buffer[screen_y * screen_width + px];
+                    uint32_t* src_row = &doom_window_buffer[r * 640 + src_x];
+                    memcpy(dest_row, src_row, copy_w * 4);
+                }
             }
         } else {
             draw_string(x + w/2 - 40, content_y + h/2 - 8, "Loading DOOM...", 0xFFFFFF);
+        }
+    }
+    else if (win->id == 7) {
+        /* ---- Quake window ---- */
+        draw_rect(x + 1, content_y, w - 2, content_h - 1, 0x000000);
+        extern uint32_t* quake_window_buffer;
+        if (quake_window_buffer) {
+            int dx = (w - 640) / 2;
+            int dy = (content_h - 480) / 2;
+            if (dx < 0) dx = 0;
+            if (dy < 0) dy = 0;
+            
+            int px = x + dx;
+            int py = content_y + dy;
+            int src_x = 0;
+            int copy_w = 640;
+            
+            if (px < 0) {
+                src_x = -px;
+                copy_w -= src_x;
+                px = 0;
+            }
+            if (px + copy_w > (int)screen_width) {
+                copy_w = (int)screen_width - px;
+            }
+            
+            if (copy_w > 0) {
+                for (int r = 0; r < 480; r++) {
+                    int screen_y = py + r;
+                    if (screen_y < 0) continue;
+                    if (screen_y >= content_y + content_h) break;
+                    if (screen_y >= (int)screen_height) break;
+                    
+                    uint32_t* dest_row = &back_buffer[screen_y * screen_width + px];
+                    uint32_t* src_row = &quake_window_buffer[r * 640 + src_x];
+                    memcpy(dest_row, src_row, copy_w * 4);
+                }
+            }
+        } else {
+            draw_string(x + w/2 - 40, content_y + h/2 - 8, "Loading QUAKE...", 0xFFFFFF);
         }
     }
     else if (win->id == 5) {
@@ -1271,25 +1357,58 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             int tile_h = 54;
             int gap = 8;
 
-            for (int i = 0; i < 6; i++) {
+            struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[7] = {
+                {"System",   0x0078D4, "PC",  0},
+                {"Terminal", 0x0C0C0C, ">_",  1},
+                {"Calc",     0x3B3B3B, "+-",  2},
+                {"Explorer", 0xDF8A10, "FE",  5},
+                {"Doom",     0xC21807, "DM",  4},
+                {"2048",     0xEDC22E, "2K",  6},
+                {"Quake 1",  0x8B4513, "Q1",  7},
+            };
+
+            for (int i = 0; i < 7; i++) {
                 int col = i % 2;
                 int row = i / 2;
                 int tx = grid_x + col * (tile_w + gap);
                 int ty = grid_y + row * (tile_h + gap);
 
                 if (mx >= tx && mx < tx + tile_w && my >= ty && my < ty + tile_h) {
-                    int win_id = -1;
-                    if (i == 0) win_id = 0;
-                    else if (i == 1) win_id = 1;
-                    else if (i == 2) win_id = 2;
-                    else if (i == 3) win_id = 5;
-                    else if (i == 4) win_id = 4;
-                    else if (i == 5) win_id = 6;
-                    
+                    int win_id = pinned[i].win_id;
                     if (win_id >= 0) {
                         windows[win_id].closed = 0;
                         windows[win_id].minimized = 0;
                         active_win_id = win_id;
+                        
+                        if (win_id == 4 && !doom_running) {
+                            extern void doomgeneric_Create(int argc, char** argv);
+                            char* doom_argv[] = {"doomgeneric", "-iwad", "/boot/doom1.wad"};
+                            print_serial("[Doom] Launching game loop via setjmp...\n");
+                            /* Paint the "Loading..." placeholder before the blocking
+                             * engine init so the desktop doesn't appear frozen. */
+                            gui_draw();
+                            if (setjmp(doom_exit_jmp) == 0) {
+                                doom_running = 1;
+                                doomgeneric_Create(3, doom_argv);
+                            } else {
+                                print_serial("[Doom] Gracefully returned to desktop.\n");
+                            }
+                        }
+                        else if (win_id == 7 && !quake_running) {
+                            extern void QG_Create(int argc, char** argv);
+                            char* quake_argv[] = {"quake"};
+                            print_serial("[Quake] Launching game loop via setjmp...\n");
+                            /* Same as above: show feedback before Host_Init runs. */
+                            gui_draw();
+                            if (setjmp(quake_exit_jmp) == 0) {
+                                quake_running = 1;
+                                QG_Create(1, quake_argv);
+                            } else {
+                                print_serial("[Quake] Gracefully returned to desktop.\n");
+                                windows[7].closed = 1;
+                                if (active_win_id == 7) active_win_id = -1;
+                            }
+                        }
                     }
                     start_menu_open = 0;
                     return;
@@ -1303,24 +1422,42 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
         }
 
         /* Desktop icon clicks */
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 7; i++) {
             int ix = 30;
             int iy = 30 + i * 90;
             if (mx >= ix && mx < ix + 48 && my >= iy && my < iy + 70) {
-                windows[i].closed = 0;
-                windows[i].minimized = 0;
-                active_win_id = i;
+                int win_id = i;
+                if (i == 6) win_id = 7; // Quake
+                if (i == 5) win_id = 5; // Explorer
+                windows[win_id].closed = 0;
+                windows[win_id].minimized = 0;
+                active_win_id = win_id;
                 start_menu_open = 0;
 
-                if (i == 4 && !doom_running) {
+                if (win_id == 4 && !doom_running) {
                     extern void doomgeneric_Create(int argc, char** argv);
                     char* doom_argv[] = {"doomgeneric", "-iwad", "/boot/doom1.wad"};
                     print_serial("[Doom] Launching game loop via setjmp...\n");
+                    gui_draw();
                     if (setjmp(doom_exit_jmp) == 0) {
                         doom_running = 1;
                         doomgeneric_Create(3, doom_argv);
                     } else {
                         print_serial("[Doom] Gracefully returned to desktop.\n");
+                    }
+                }
+                else if (win_id == 7 && !quake_running) {
+                    extern void QG_Create(int argc, char** argv);
+                    char* quake_argv[] = {"quake"};
+                    print_serial("[Quake] Launching game loop via setjmp...\n");
+                    gui_draw();
+                    if (setjmp(quake_exit_jmp) == 0) {
+                        quake_running = 1;
+                        QG_Create(1, quake_argv);
+                    } else {
+                        print_serial("[Quake] Gracefully returned to desktop.\n");
+                        windows[7].closed = 1;
+                        if (active_win_id == 7) active_win_id = -1;
                     }
                 }
                 return;
@@ -1581,3 +1718,9 @@ void gui_handle_keyboard(char c) {
         }
     }
 }
+
+void gui_close_quake(void) {
+    if (windows) windows[7].closed = 1;
+    if (active_win_id == 7) active_win_id = -1;
+}
+

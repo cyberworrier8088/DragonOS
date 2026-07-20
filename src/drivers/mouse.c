@@ -6,6 +6,8 @@ int mouse_x = 400;
 int mouse_y = 300;
 int mouse_l_click = 0;
 int mouse_r_click = 0;
+int mouse_dx = 0;
+int mouse_dy = 0;
 
 static uint8_t mouse_cycle = 0;
 static int8_t  mouse_byte[3];
@@ -104,6 +106,8 @@ void mouse_handler(registers_t* r) {
 
         mouse_x += dx;
         mouse_y += dy;
+        mouse_dx += dx;
+        mouse_dy += dy;
 
         /* Clip to actual screen boundaries */
         if (mouse_x < 0) mouse_x = 0;

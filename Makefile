@@ -31,6 +31,9 @@ DOOM_SRCS = $(filter-out src/doom/doomgeneric/doomgeneric_allegro.c \
 
 DOOM_OBJS = $(DOOM_SRCS:.c=.o) src/doom/doomgeneric_dragonos.o
 
+QUAKE_SRCS = $(wildcard src/quake/*.c)
+QUAKE_OBJS = $(QUAKE_SRCS:.c=.o)
+
 OBJS = boot.o \
        src/cpu/interrupt.o \
        src/cpu/ports.o \
@@ -53,6 +56,7 @@ OBJS = boot.o \
        src/drivers/ata.o \
        src/fs/vfs.o \
        $(DOOM_OBJS) \
+       $(QUAKE_OBJS) \
        src/shell/shell.o \
        src/shell/gui.o \
        src/shell/minilua.o \
@@ -92,6 +96,16 @@ src/doom/%.o: src/doom/%.c
 src/doom/doomgeneric/%.o: src/doom/doomgeneric/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+QUAKE_CFLAGS = $(CFLAGS) -msse -msse2 -mstackrealign -Wno-implicit-function-declaration -Wno-unused-variable -Wno-unused-parameter \
+	-Dtimelimit=q_timelimit -Ddeathmatch=q_deathmatch -Dmouse_y=q_mouse_y -Dmouse_x=q_mouse_x -Dstartepisode=q_startepisode \
+	-DM_Init=q_M_Init -Dnomonsters=q_nomonsters -DR_InitTextures=q_R_InitTextures -DR_Init=q_R_Init -DR_SetupFrame=q_R_SetupFrame \
+	-DR_DrawSprite=q_R_DrawSprite -DWritePCXfile=q_WritePCXfile -DS_Init=q_S_Init -DS_Shutdown=q_S_Shutdown -DS_StartSound=q_S_StartSound \
+	-DS_StopSound=q_S_StopSound -Donground=q_onground -Dgammatable=q_gammatable -DV_Init=q_V_Init -DZ_ClearZone=q_Z_ClearZone \
+	-DZ_Free=q_Z_Free -Dmainzone=q_mainzone -DZ_CheckHeap=q_Z_CheckHeap -DZ_Malloc=q_Z_Malloc
+
+src/quake/%.o: src/quake/%.c
+	$(CC) $(QUAKE_CFLAGS) -c $< -o $@
+
 boot.o: src/boot.asm
 	$(AS) $(ASFLAGS) $< -o $@
 
@@ -112,8 +126,12 @@ isodir/boot/doom1.wad:
 	mkdir -p isodir/boot
 	curl -L "https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad" -o isodir/boot/doom1.wad || wget -O isodir/boot/doom1.wad "https://github.com/Akbar30Bill/DOOM_wads/raw/master/doom1.wad"
 
+isodir/boot/pak0.pak: pak0.pak
+	mkdir -p isodir/boot
+	cp pak0.pak isodir/boot/pak0.pak
 
-dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
+
+dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad isodir/boot/pak0.pak
 	mkdir -p isodir/boot
 	cp dragonos.bin isodir/boot/
 	cp limine.conf isodir/boot/
@@ -132,13 +150,13 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad
 	./limine-bin/limine bios-install $@
 
 run: dragonos.iso
-	qemu-system-x86_64 -m 2G -cdrom dragonos.iso
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso
 
 run-curses: dragonos.iso
-	qemu-system-x86_64 -m 2G -cdrom dragonos.iso -display curses
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses
 
 run-nographic: dragonos.iso
-	qemu-system-x86_64 -m 2G -cdrom dragonos.iso -nographic -serial mon:stdio
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir

@@ -24,6 +24,12 @@ _start:
     mov gs, ax
     mov ss, ax
 
+    ; Switch onto our own large stack. The bootloader-provided stack is not
+    ; guaranteed to be large enough for deeply nested C call chains (ported
+    ; game engines in particular routinely assume a >=1MB OS stack), so we
+    ; can't rely on whatever Limine handed us.
+    lea rsp, [rel kernel_stack_top]
+
     ; Invoke kernel_main
     extern kernel_main
     call kernel_main
@@ -47,3 +53,9 @@ gdt64:
 gdt64_ptr:
     dw $ - gdt64 - 1
     dq gdt64
+
+section .bss
+align 16
+kernel_stack_bottom:
+    resb 0x400000   ; 4MB kernel stack
+kernel_stack_top:

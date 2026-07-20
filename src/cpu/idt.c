@@ -1,7 +1,14 @@
 #include "idt.h"
 #include "ports.h"
 #include "../libc/string.h"
+#include "../libc/stdlib.h"
 #include "../drivers/serial.h"
+
+/* Game state flags and unwind targets used for fault isolation */
+extern int quake_running;
+extern int doom_running;
+extern jmp_buf quake_exit_jmp;
+extern jmp_buf doom_exit_jmp;
 
 extern void idt_flush(uint64_t);
 
@@ -183,10 +190,28 @@ void isr_handler(registers_t* r) {
     if (interrupt_handlers[r->int_no] != 0) {
         isr_t handler = interrupt_handlers[r->int_no];
         handler(r);
-    } else {
-        print_serial("Unhandled CPU Exception! System Halted.\n");
-        __asm__ volatile("cli; hlt");
+        return;
     }
+
+    /* Fault isolation: if the fault happened inside a game's code, abort
+     * only the game and unwind back to the desktop loop instead of
+     * halting the entire OS. The interrupt gate cleared IF, so re-enable
+     * interrupts before abandoning this exception frame via longjmp. */
+    if (quake_running) {
+        print_serial("[Kernel] Fault inside Quake. Terminating game, returning to desktop.\n");
+        quake_running = 0;
+        __asm__ volatile("sti");
+        longjmp(quake_exit_jmp, 1);
+    }
+    if (doom_running) {
+        print_serial("[Kernel] Fault inside Doom. Terminating game, returning to desktop.\n");
+        doom_running = 0;
+        __asm__ volatile("sti");
+        longjmp(doom_exit_jmp, 1);
+    }
+
+    print_serial("Unhandled CPU Exception! System Halted.\n");
+    __asm__ volatile("cli; hlt");
 }
 
 void irq_handler(registers_t* r) {

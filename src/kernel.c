@@ -11,6 +11,7 @@
 #include "drivers/pci.h"
 #include "fs/vfs.h"
 #include "libc/string.h"
+#include "libc/stdlib.h"
 #include "../limine-bin/limine.h"
 
 // Set the base revision to 4
@@ -190,17 +191,47 @@ void kernel_main(void) {
     print_serial("[DragonOS] Hardware interrupts enabled. Starting desktop loop...\n");
 
     /* Desktop Rendering loop */
+    extern uint32_t get_ticks(void);
+    uint32_t last_game_ticks = get_ticks();
     while (1) {
         extern int doom_running;
+        extern int quake_running;
         if (doom_running) {
             extern void doomgeneric_Tick(void);
             doomgeneric_Tick();
         }
+        if (quake_running) {
+            /* Pass real elapsed wall time so Host_FilterTime paces the
+             * game correctly instead of a hardcoded 10ms guess. */
+            uint32_t now = get_ticks();
+            double dt = (double)(now - last_game_ticks) * 0.01;
+            last_game_ticks = now;
+
+            extern jmp_buf quake_exit_jmp;
+            if (setjmp(quake_exit_jmp) == 0) {
+                extern void QG_Tick(double);
+                QG_Tick(dt);
+            } else {
+                print_serial("[Quake] Game aborted during tick. Returning to desktop.\n");
+                quake_running = 0;
+                extern void gui_close_quake(void);
+                gui_close_quake();
+            }
+        } else {
+            last_game_ticks = get_ticks();
+        }
         gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
         gui_draw();
-        
-        // Cap frame rate to ~60 FPS and process hardware interrupts efficiently
+
         extern void sleep_ms(uint32_t ms);
-        sleep_ms(16);
+        if (doom_running || quake_running) {
+            /* While a game runs, just yield until the next hardware
+             * interrupt (<=10ms). A fixed 16ms sleep on top of the game's
+             * own frame cost made input feel frozen. */
+            __asm__ volatile("hlt");
+        } else {
+            /* Idle desktop: cap at ~60 FPS to keep host CPU usage low. */
+            sleep_ms(16);
+        }
     }
 }

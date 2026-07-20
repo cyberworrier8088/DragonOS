@@ -389,8 +389,13 @@ int ferror(FILE* stream) {
     return 0;
 }
 
-void clearerr(FILE* stream) {
+void clearerr(FILE *stream) {
     (void)stream;
+}
+
+int fgetc(FILE *stream) {
+    (void)stream;
+    return EOF;
 }
 
 int getc(FILE* stream) {

@@ -245,6 +245,16 @@ int open(const char* pathname, int flags) {
         }
     }
 
+    // Fallback for Quake 1 shareware PAK file mapped via Limine ISO module
+    if (found_index == -1 && (strcmp(pathname, "id1/pak0.pak") == 0 || strcmp(pathname, "./id1/pak0.pak") == 0)) {
+        for (int i = 0; i < vfs_node_count; i++) {
+            if (strcmp(vfs_nodes[i].name, "pak0.pak") == 0 || strcmp(vfs_nodes[i].name, "/boot/pak0.pak") == 0) {
+                found_index = i;
+                break;
+            }
+        }
+    }
+
     if (found_index == -1) {
         if (flags & O_CREAT) {
             // Create a 64KB file in RAM by default (standard buffer size)
