@@ -68,15 +68,26 @@ static void keyboard_callback(registers_t* regs) {
     (void)regs;
     uint8_t scancode = inb(0x60);
 
+    /* 0x00 and 0xFF are PS/2 controller overflow/error markers, not keys. */
+    if (scancode == 0x00 || scancode == 0xFF) {
+        e0_prefix = 0;
+        return;
+    }
+
+    /* While a game is running it owns the keyboard exclusively; feeding the
+     * same scancodes to the desktop shell as well typed stray characters
+     * into the terminal and confused the shell's modifier state. */
     extern int doom_running;
     if (doom_running) {
         extern void doom_handle_keyboard_raw(uint8_t scancode);
         doom_handle_keyboard_raw(scancode);
+        return;
     }
     extern int quake_running;
     if (quake_running) {
         extern void quake_handle_keyboard_raw(uint8_t scancode);
         quake_handle_keyboard_raw(scancode);
+        return;
     }
 
     if (scancode == 0xE0) {

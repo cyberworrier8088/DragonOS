@@ -687,6 +687,38 @@ void ED_ParseGlobals (char *data)
 
 /*
 =============
+PR_SetEngineString
+
+Converts a C string pointer into a QuakeC string_t offset. string_t is a
+32-bit offset from pr_strings, which is only representable for strings that
+live inside the Quake heap. On a 64-bit build, engine strings that live in
+kernel static storage (sv.name, model names from mod_known, the ftos temp
+buffer, ...) are gigabytes away from pr_strings, and the truncated offset
+made the QuakeC VM dereference wild pointers. Strings outside the heap are
+copied onto the hunk first so the offset always fits.
+=============
+*/
+int PR_SetEngineString (char *s)
+{
+	char		*base = (char *)host_parms.membase;
+	long long	ofs;
+	char		*copy;
+	int			l;
+
+	if (!s)
+		return 0;
+
+	if (s >= base && s < base + host_parms.memsize)
+		return (int)(s - pr_strings);
+
+	l = strlen (s) + 1;
+	copy = Hunk_AllocName (l, "estring");
+	memcpy (copy, s, l);
+	return (int)(copy - pr_strings);
+}
+
+/*
+=============
 ED_NewString
 =============
 */
@@ -739,7 +771,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 	switch (key->type & ~DEF_SAVEGLOBAL)
 	{
 	case ev_string:
-		*(string_t *)d = ED_NewString (s) - pr_strings;
+		*(string_t *)d = PR_SetEngineString (ED_NewString (s));
 		break;
 		
 	case ev_float:

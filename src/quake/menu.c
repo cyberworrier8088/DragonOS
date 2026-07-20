@@ -295,6 +295,8 @@ void M_Main_Draw (void)
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/mainmenu.lmp") );
 
 	f = (int)(host_time * 10)%6;
+	if (f < 0)
+		f = 0;	/* defensive: never build a negative menudot filename */
 
 	M_DrawTransPic (54, 32 + m_main_cursor * 20,Draw_CachePic( va("gfx/menudot%i.lmp", f+1 ) ) );
 }

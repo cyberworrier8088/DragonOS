@@ -8,6 +8,7 @@
 
 uint32_t* quake_window_buffer = 0;
 int quake_running = 0;
+int quake_initialized = 0;
 jmp_buf quake_exit_jmp;
 
 static uint32_t quake_palette[256];
@@ -41,58 +42,43 @@ static void push_quake_key(int pressed, int key) {
     }
 }
 
+/* Full PS/2 scancode set 1 -> Quake key map for make-codes 0x00-0x58.
+ * Quake expects lowercased ASCII for printable keys and the K_* codes
+ * from quakekeys.h for everything else. 0 = no mapping. The previous
+ * switch only covered 9 letters, so keys like 'y' (quit confirmation)
+ * and most of the alphabet were dead. */
+static const unsigned char quake_scancode_map[0x59] = {
+    /* 0x00 */ 0,    27,  '1', '2', '3', '4', '5', '6',
+    /* 0x08 */ '7',  '8', '9', '0', '-', '=', 127, 9,
+    /* 0x10 */ 'q',  'w', 'e', 'r', 't', 'y', 'u', 'i',
+    /* 0x18 */ 'o',  'p', '[', ']', 13,  133, 'a', 's',
+    /* 0x20 */ 'd',  'f', 'g', 'h', 'j', 'k', 'l', ';',
+    /* 0x28 */ '\'', '`', 134, '\\','z', 'x', 'c', 'v',
+    /* 0x30 */ 'b',  'n', 'm', ',', '.', '/', 134, '*',
+    /* 0x38 */ 132,  32,  0,   135, 136, 137, 138, 139, /* 0x3A CapsLock ignored */
+    /* 0x40 */ 140,  141, 142, 143, 144, 0,   0,   151, /* NumLock/Scroll ignored */
+    /* 0x48 */ 128,  150, '-', 130, '5', 131, '+', 152,
+    /* 0x50 */ 129,  149, 147, 148, 0,   0,   0,   145,
+    /* 0x58 */ 146,
+};
+
 void quake_handle_keyboard_raw(uint8_t scancode) {
-    if (scancode == 0xE0) {
+    /* E0/E1-prefixed keys (arrows, right ctrl/alt, ins/del block) share
+     * make codes with the numpad; the shared table entries already map
+     * both variants to the key Quake cares about, so the prefix byte is
+     * simply skipped. */
+    if (scancode == 0xE0 || scancode == 0xE1) {
         return;
     }
-    
+
     int pressed = !(scancode & 0x80);
     uint8_t code = scancode & 0x7F;
-    int quake_key = 0;
-    
-    switch (code) {
-        case 0x01: quake_key = 27; break;   // Esc -> K_ESCAPE
-        case 0x1C: quake_key = 13; break;   // Enter -> K_ENTER
-        case 0x39: quake_key = 32; break;   // Space -> K_SPACE
-        case 0x1D: quake_key = 133; break;  // Left Ctrl -> K_CTRL
-        case 0x2A: quake_key = 134; break;  // Left Shift -> K_SHIFT
-        case 0x0E: quake_key = 127; break;  // Backspace -> K_BACKSPACE
-        case 0x0F: quake_key = 9; break;    // Tab -> K_TAB
 
-        // Numbers
-        case 0x02: quake_key = '1'; break;
-        case 0x03: quake_key = '2'; break;
-        case 0x04: quake_key = '3'; break;
-        case 0x05: quake_key = '4'; break;
-        case 0x06: quake_key = '5'; break;
-        case 0x07: quake_key = '6'; break;
-        case 0x08: quake_key = '7'; break;
-        case 0x09: quake_key = '8'; break;
-        case 0x0a: quake_key = '9'; break;
-        case 0x0b: quake_key = '0'; break;
-
-        // Letters
-        case 0x11: quake_key = 'w'; break;
-        case 0x1E: quake_key = 'a'; break;
-        case 0x1F: quake_key = 's'; break;
-        case 0x20: quake_key = 'd'; break;
-        case 0x12: quake_key = 'e'; break;
-        case 0x10: quake_key = 'q'; break;
-        case 0x2C: quake_key = 'z'; break;
-        case 0x2D: quake_key = 'x'; break;
-        case 0x2E: quake_key = 'c'; break;
-        
-        // Punctuation
-        case 0x29: quake_key = '`'; break;
-
-        // Arrow Keys
-        case 0x48: quake_key = 128; break; // Up Arrow -> K_UPARROW
-        case 0x50: quake_key = 129; break; // Down Arrow -> K_DOWNARROW
-        case 0x4B: quake_key = 130; break; // Left Arrow -> K_LEFTARROW
-        case 0x4D: quake_key = 131; break; // Right Arrow -> K_RIGHTARROW
-
-        default: break;
+    if (code >= sizeof(quake_scancode_map)) {
+        return;
     }
+
+    int quake_key = quake_scancode_map[code];
     if (quake_key != 0) {
         push_quake_key(pressed, quake_key);
     }

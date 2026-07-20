@@ -250,7 +250,7 @@ void PF_setmodel (void)
 		PR_RunError ("no precache: %s\n", m);
 		
 
-	e->v.model = m - pr_strings;
+	e->v.model = PR_SetEngineString (m);
 	e->v.modelindex = i; //SV_ModelIndex (m);
 
 	mod = sv.models[ (int)e->v.modelindex];  // Mod_ForName (m, true);
@@ -900,7 +900,7 @@ void PF_ftos (void)
 		sprintf (pr_string_temp, "%d",(int)v);
 	else
 		sprintf (pr_string_temp, "%5.1f",v);
-	G_INT(OFS_RETURN) = pr_string_temp - pr_strings;
+	G_INT(OFS_RETURN) = PR_SetEngineString (pr_string_temp);
 }
 
 void PF_fabs (void)
@@ -913,7 +913,7 @@ void PF_fabs (void)
 void PF_vtos (void)
 {
 	sprintf (pr_string_temp, "'%5.1f %5.1f %5.1f'", G_VECTOR(OFS_PARM0)[0], G_VECTOR(OFS_PARM0)[1], G_VECTOR(OFS_PARM0)[2]);
-	G_INT(OFS_RETURN) = pr_string_temp - pr_strings;
+	G_INT(OFS_RETURN) = PR_SetEngineString (pr_string_temp);
 }
 
 void PF_Spawn (void)

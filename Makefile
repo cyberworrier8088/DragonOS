@@ -4,7 +4,12 @@ CC = gcc
 AS = nasm
 LD = ld
 
-CFLAGS = -m64 -ffreestanding -O2 -Wall -Wextra -std=gnu99 -Isrc -mno-red-zone -mno-sse -mno-sse2
+# SSE is enabled kernel-wide: boot.asm turns it on before any C runs, and
+# the interrupt stubs fxsave/fxrstor the FPU state. Compiling some objects
+# with -mno-sse and others with -msse breaks the x86_64 ABI at every
+# float-passing call between them (stack vs XMM0), which corrupted game
+# timing. -mno-red-zone stays: interrupts run on the interrupted stack.
+CFLAGS = -m64 -ffreestanding -O2 -Wall -Wextra -std=gnu99 -Isrc -mno-red-zone
 ASFLAGS = -f elf64
 LDFLAGS = -m elf_x86_64 -T src/linker.ld
 

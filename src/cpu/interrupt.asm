@@ -5,6 +5,12 @@ idt_flush:
     lidt [rdi]      ; In System V AMD64 ABI, first parameter is in RDI
     ret
 
+; Both stubs must preserve the FULL CPU state, including x87/SSE registers.
+; Interrupt handlers call into SSE-compiled code (the game keyboard hooks,
+; libc math), so without fxsave/fxrstor an IRQ arriving mid-float-operation
+; silently corrupts the interrupted context's XMM registers. That manifested
+; as random game-state corruption on every keypress.
+
 extern isr_handler
 isr_common_stub:
     push rax
@@ -24,7 +30,15 @@ isr_common_stub:
     push r15
 
     mov rdi, rsp    ; Pass pointer to stack frame (registers_t*) in RDI
+    mov rbx, rsp    ; Remember GP-save block (rbx is restored by pops below)
+    sub rsp, 528    ; 512-byte FXSAVE area + alignment slack
+    and rsp, -16    ; FXSAVE requires 16-byte alignment; also aligns the call
+    fxsave [rsp]
+
     call isr_handler
+
+    fxrstor [rsp]
+    mov rsp, rbx
 
     pop r15
     pop r14
@@ -63,7 +77,15 @@ irq_common_stub:
     push r15
 
     mov rdi, rsp    ; Pass pointer to stack frame (registers_t*) in RDI
+    mov rbx, rsp    ; Remember GP-save block (rbx is restored by pops below)
+    sub rsp, 528    ; 512-byte FXSAVE area + alignment slack
+    and rsp, -16    ; FXSAVE requires 16-byte alignment; also aligns the call
+    fxsave [rsp]
+
     call irq_handler
+
+    fxrstor [rsp]
+    mov rsp, rbx
 
     pop r15
     pop r14

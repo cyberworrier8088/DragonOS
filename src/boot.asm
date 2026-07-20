@@ -30,6 +30,18 @@ _start:
     ; can't rely on whatever Limine handed us.
     lea rsp, [rel kernel_stack_top]
 
+    ; Enable SSE before ANY C code runs: the entire kernel is compiled with
+    ; SSE so that every function uses the standard x86_64 float ABI. Mixing
+    ; -mno-sse and -msse objects passed doubles through different locations
+    ; (stack vs XMM0), which silently fed garbage into game timing code.
+    mov rax, cr0
+    and rax, ~(1 << 2)      ; clear EM (no x87 emulation)
+    or  rax, (1 << 1)       ; set MP (monitor coprocessor)
+    mov cr0, rax
+    mov rax, cr4
+    or  rax, (3 << 9)       ; set OSFXSR | OSXMMEXCPT
+    mov cr4, rax
+
     ; Invoke kernel_main
     extern kernel_main
     call kernel_main

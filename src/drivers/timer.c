@@ -2,6 +2,8 @@
 #include "../cpu/idt.h"
 #include "../cpu/ports.h"
 
+volatile /* volatile: written from the IRQ0 handler and polled from kernel context;
+ * without it the optimizer may cache the value and spin forever. */
 volatile uint32_t tick = 0;
 
 static void timer_callback(registers_t* regs) {

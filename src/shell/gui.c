@@ -30,6 +30,38 @@ int gui_was_clicked = 0;
 /* Start Menu State */
 int start_menu_open = 0;
 
+/* Launch or resume Quake. The engine initializes exactly once and then
+ * persists across window closes: re-running Host_Init on a live engine
+ * corrupts its zone allocator (cvar strings from the previous zone are
+ * freed into the new one), so "relaunch" resumes the existing instance. */
+static void gui_launch_quake(void) {
+    extern void QG_Create(int argc, char** argv);
+    extern void QG_Init(void);
+    extern int quake_initialized;
+    static char* quake_argv[] = {"quake"};
+
+    print_serial("[Quake] Launching game loop via setjmp...\n");
+    /* Paint the placeholder frame before the blocking engine init so the
+     * desktop doesn't appear frozen, and drop any stale input state. */
+    gui_draw();
+    QG_Init();
+
+    if (setjmp(quake_exit_jmp) == 0) {
+        quake_running = 1;
+        if (!quake_initialized) {
+            /* Mark before init: if Host_Init faults partway, re-running it
+             * on the half-built engine would corrupt the allocators. */
+            quake_initialized = 1;
+            QG_Create(1, quake_argv);
+        }
+        /* Already initialized: the desktop loop resumes QG_Tick. */
+    } else {
+        print_serial("[Quake] Gracefully returned to desktop.\n");
+        windows[7].closed = 1;
+        if (active_win_id == 7) active_win_id = -1;
+    }
+}
+
 /* Clock / Time counter */
 static uint32_t ticks_counter = 0;
 static char time_str[12] = "12:00 PM";
@@ -1395,19 +1427,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                             }
                         }
                         else if (win_id == 7 && !quake_running) {
-                            extern void QG_Create(int argc, char** argv);
-                            char* quake_argv[] = {"quake"};
-                            print_serial("[Quake] Launching game loop via setjmp...\n");
-                            /* Same as above: show feedback before Host_Init runs. */
-                            gui_draw();
-                            if (setjmp(quake_exit_jmp) == 0) {
-                                quake_running = 1;
-                                QG_Create(1, quake_argv);
-                            } else {
-                                print_serial("[Quake] Gracefully returned to desktop.\n");
-                                windows[7].closed = 1;
-                                if (active_win_id == 7) active_win_id = -1;
-                            }
+                            gui_launch_quake();
                         }
                     }
                     start_menu_open = 0;
@@ -1447,18 +1467,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     }
                 }
                 else if (win_id == 7 && !quake_running) {
-                    extern void QG_Create(int argc, char** argv);
-                    char* quake_argv[] = {"quake"};
-                    print_serial("[Quake] Launching game loop via setjmp...\n");
-                    gui_draw();
-                    if (setjmp(quake_exit_jmp) == 0) {
-                        quake_running = 1;
-                        QG_Create(1, quake_argv);
-                    } else {
-                        print_serial("[Quake] Gracefully returned to desktop.\n");
-                        windows[7].closed = 1;
-                        if (active_win_id == 7) active_win_id = -1;
-                    }
+                    gui_launch_quake();
                 }
                 return;
             }
