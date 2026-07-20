@@ -29,6 +29,25 @@ void vfs_register_file(const char* name, void* buffer, uint32_t size) {
     node->private_data = buffer;
 }
 
+static int dynamic_mem_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
+    if (offset >= (uint32_t)node->size) return 0;
+    uint32_t to_write = (uint32_t)node->size - offset;
+    if (to_write > size) to_write = size;
+    memcpy((uint8_t*)node->private_data + offset, buffer, to_write);
+    return to_write;
+}
+
+void vfs_create_file(const char* name, uint32_t size) {
+    if (vfs_node_count >= 32) return;
+    vfs_node_t* node = &vfs_nodes[vfs_node_count++];
+    strcpy(node->name, name);
+    node->size = size;
+    node->read = dynamic_mem_read;
+    node->write = dynamic_mem_write;
+    node->private_data = kmalloc(size);
+    memset(node->private_data, 0, size);
+}
+
 // Standard stream nodes
 static vfs_node_t stdin_node;
 static vfs_node_t stdout_node;

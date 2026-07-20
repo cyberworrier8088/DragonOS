@@ -23,6 +23,7 @@ typedef struct {
 
 void init_vfs(void);
 void vfs_register_file(const char* name, void* buffer, uint32_t size);
+void vfs_create_file(const char* name, uint32_t size);
 
 // POSIX System Calls Emulation
 int open(const char* pathname, int flags);

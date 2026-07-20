@@ -721,6 +721,10 @@ static void draw_window_content(gui_window_t* win) {
         draw_string(x + 12, content_y + 124, " Downloads", 0xCCCCCC);
         draw_string(x + 12, content_y + 152, " Local Disk (C:)", 0xCCCCCC);
 
+        /* New File Button */
+        draw_rounded_rect(x + 8, content_y + 180, 96, 22, 4, 0x005FB8); // Windows 11 Blue
+        draw_string(x + 24, content_y + 184, "New File", 0xFFFFFF);
+
         /* Address Bar */
         draw_rounded_rect(x + 120, content_y + 8, w - 132, 22, 4, 0x2B2B2B);
         draw_rounded_rect_outline(x + 120, content_y + 8, w - 132, 22, 4, 0x3D3D3D);
@@ -1297,6 +1301,21 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                 /* File Explorer clicks */
                 if (win->id == 5) {
                     int content_y = win->y + 32;
+                    
+                    // Check if New File button clicked
+                    if (mx >= win->x + 8 && mx < win->x + 104 && my >= content_y + 180 && my < content_y + 202) {
+                        extern void vfs_create_file(const char* name, uint32_t size);
+                        vfs_create_file("test.lua", 4096);
+                        
+                        // Populate with a default hello world script
+                        int new_fd = open("test.lua", 0);
+                        if (new_fd >= 0) {
+                            const char* default_lua = "print('Hello from dynamic DragonOS RAM Disk!')\n";
+                            write(new_fd, default_lua, strlen(default_lua));
+                            close(new_fd);
+                        }
+                    }
+
                     if (mx >= win->x + 120 && mx < win->x + win->w && my >= content_y + 60 && my < content_y + 60 + 7 * 26) {
                         int clicked_row = (my - (content_y + 60)) / 26;
                         int count = vfs_get_count();
@@ -1318,12 +1337,32 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                             doom_running = 1;
                                             doomgeneric_Create(3, doom_argv);
                                         } else {
-                                            print_serial("[Doom] Gracefully returned to desktop.\n");
-                                            active_win_id = -1;
-                                            gui_was_clicked = 0;
+                                            print_serial("[Doom] Exited successfully back to GUI loop.\n");
                                         }
                                     }
-                                    return;
+                                }
+                                // If clicked a .lua file, run it in the Lua VM
+                                else {
+                                    int len = strlen(node->name);
+                                    if (len > 4 && strcmp(node->name + len - 4, ".lua") == 0) {
+                                        int fd = open(node->name, 0);
+                                        if (fd >= 0) {
+                                            char* script_buf = kmalloc(node->size + 1);
+                                            if (script_buf) {
+                                                int bytes = read(fd, script_buf, node->size);
+                                                if (bytes > 0) {
+                                                    script_buf[bytes] = '\0';
+                                                    extern int lua_main_string(const char* code);
+                                                    gui_write_string("Executing ");
+                                                    gui_write_string(node->name);
+                                                    gui_write_string("...\n");
+                                                    lua_main_string(script_buf);
+                                                }
+                                                kfree(script_buf);
+                                            }
+                                            close(fd);
+                                        }
+                                    }
                                 }
                             }
                         }

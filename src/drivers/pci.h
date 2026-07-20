@@ -12,6 +12,7 @@ typedef struct pci_device {
     uint8_t class_code;
     uint8_t subclass;
     const char* class_name;
+    uint32_t bar[6];
     struct pci_device* next;
 } pci_device_t;
 

@@ -72,6 +72,13 @@ void pci_check_device(uint8_t bus, uint8_t slot) {
         device->class_code = class_code;
         device->subclass = subclass;
         device->class_name = pci_get_class_name(class_code);
+        
+        // Scan BAR0 to BAR5
+        for (int i = 0; i < 6; i++) {
+            uint32_t bar_val = pci_read_config_dword(bus, slot, func, 0x10 + (i * 4));
+            device->bar[i] = bar_val;
+        }
+
         device->next = pci_devices_head;
         pci_devices_head = device;
         pci_device_count++;
@@ -87,7 +94,18 @@ void pci_check_device(uint8_t bus, uint8_t slot) {
         strcat(log_buf, " Dev: ");
         int_to_ascii(dev, num_buf);
         strcat(log_buf, num_buf);
-        strcat(log_buf, ")\n");
+        strcat(log_buf, ") BAR0: 0x");
+        
+        // Simple hex print for BAR0
+        uint32_t b0 = device->bar[0];
+        const char* hex_chars = "0123456789ABCDEF";
+        for (int i = 7; i >= 0; i--) {
+            int nibble = (b0 >> (i * 4)) & 0xF;
+            char nstr[2] = {hex_chars[nibble], '\0'};
+            strcat(log_buf, nstr);
+        }
+        strcat(log_buf, "\n");
+        
         print_serial(log_buf);
     }
 }
