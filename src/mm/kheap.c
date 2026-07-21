@@ -27,6 +27,9 @@ void kheap_init(void) {
 void* kmalloc(size_t size) {
     if (size == 0) return 0;
     
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
+    
     // 8-byte alignment
     if (size % 8 != 0) {
         size += 8 - (size % 8);
@@ -46,7 +49,10 @@ void* kmalloc(size_t size) {
                 curr->next = new_block;
             }
             curr->free = 0;
-            return (void*)((uint8_t*)curr + sizeof(heap_block_t));
+            void* ret = (void*)((uint8_t*)curr + sizeof(heap_block_t));
+            memset(ret, 0, size); // Zero initialize for safety
+            __asm__ volatile("push %0; popfq" :: "r"(rflags));
+            return ret;
         }
         curr = curr->next;
     }
@@ -58,7 +64,10 @@ void* kmalloc(size_t size) {
     }
 
     void* new_pages = pmm_alloc_pages(pages_needed);
-    if (!new_pages) return 0; // OOM
+    if (!new_pages) {
+        __asm__ volatile("push %0; popfq" :: "r"(rflags));
+        return 0; // OOM
+    }
 
     heap_block_t* new_block = (heap_block_t*)new_pages;
     new_block->size = pages_needed * PAGE_SIZE - sizeof(heap_block_t);
@@ -66,12 +75,17 @@ void* kmalloc(size_t size) {
     new_block->next = heap_head;
     heap_head = new_block;
 
+    __asm__ volatile("push %0; popfq" :: "r"(rflags));
     // Retry allocation
     return kmalloc(size);
 }
 
 void kfree(void* ptr) {
     if (!ptr) return;
+    
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
+    
     heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - sizeof(heap_block_t));
     block->free = 1;
     
@@ -97,6 +111,8 @@ void kfree(void* ptr) {
         }
         curr = curr->next;
     }
+    
+    __asm__ volatile("push %0; popfq" :: "r"(rflags));
 }
 
 void* krealloc(void* ptr, size_t size) {
@@ -106,15 +122,20 @@ void* krealloc(void* ptr, size_t size) {
         return 0;
     }
     
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
     heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - sizeof(heap_block_t));
     if (block->size >= size) {
+        __asm__ volatile("push %0; popfq" :: "r"(rflags));
         return ptr; // Existing block is large enough
     }
+    __asm__ volatile("push %0; popfq" :: "r"(rflags));
     
     void* new_ptr = kmalloc(size);
     if (!new_ptr) return 0; // OOM
     
     // Copy old contents
+    // block->size might be larger than what we need, but we only copy up to block->size (or size if block->size is larger, but it isn't here)
     memcpy(new_ptr, ptr, block->size);
     kfree(ptr);
     return new_ptr;
@@ -123,8 +144,7 @@ void* krealloc(void* ptr, size_t size) {
 void* kcalloc(size_t num, size_t size) {
     size_t total = num * size;
     void* ptr = kmalloc(total);
-    if (ptr) {
-        memset(ptr, 0, total);
-    }
+    // memset is already done in kmalloc now, but doing it again is harmless.
+    // We can just return ptr.
     return ptr;
 }

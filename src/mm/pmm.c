@@ -133,13 +133,19 @@ void pmm_init(struct limine_memmap_response* memmap, uint64_t hhdm_offset) {
 void* pmm_alloc_pages(uint64_t count) {
     if (count == 0) return 0;
     
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
+    
     // Find the smallest order that fits count
     int target_order = 0;
     while ((1ULL << target_order) < count) {
         target_order++;
     }
     
-    if (target_order > BUDDY_MAX_ORDER) return 0;
+    if (target_order > BUDDY_MAX_ORDER) {
+        __asm__ volatile("push %0; popfq" :: "r"(rflags));
+        return 0;
+    }
 
     // Find a free block starting from target_order
     for (int order = target_order; order <= BUDDY_MAX_ORDER; order++) {
@@ -157,10 +163,13 @@ void* pmm_alloc_pages(uint64_t count) {
             pmm_used_memory += (1ULL << target_order) * PAGE_SIZE;
             pmm_free_memory -= (1ULL << target_order) * PAGE_SIZE;
             
-            return (void*)(found_idx * PAGE_SIZE + pmm_hhdm_offset);
+            void* ret = (void*)(found_idx * PAGE_SIZE + pmm_hhdm_offset);
+            __asm__ volatile("push %0; popfq" :: "r"(rflags));
+            return ret;
         }
     }
     
+    __asm__ volatile("push %0; popfq" :: "r"(rflags));
     return 0; // Out of memory
 }
 
@@ -169,6 +178,9 @@ void* pmm_alloc_page(void) {
 }
 
 void pmm_free_pages(void* ptr, uint64_t count) {
+    uint64_t rflags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
+    
     uint64_t phys = (uint64_t)ptr - pmm_hhdm_offset;
     uint64_t page_idx = phys / PAGE_SIZE;
     
@@ -201,6 +213,7 @@ void pmm_free_pages(void* ptr, uint64_t count) {
     
     // Add final coalesced block back to list
     add_to_list(page_idx, order);
+    __asm__ volatile("push %0; popfq" :: "r"(rflags));
 }
 
 void pmm_free_page(void* ptr) {

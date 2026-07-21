@@ -1718,3 +1718,9 @@ void gui_close_quake(void) {
     if (active_win_id == 7) active_win_id = -1;
 }
 
+void gui_close_doom(void) {
+    if (windows) windows[4].closed = 1;
+    if (active_win_id == 4) active_win_id = -1;
+    gui_was_clicked = 0;
+}
+

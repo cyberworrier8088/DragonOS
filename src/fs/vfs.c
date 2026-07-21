@@ -22,7 +22,8 @@ static int dynamic_mem_read(vfs_node_t* node, uint32_t offset, uint32_t size, ui
 void vfs_register_file(const char* name, void* buffer, uint32_t size) {
     if (vfs_node_count >= 32) return;
     vfs_node_t* node = &vfs_nodes[vfs_node_count++];
-    strcpy(node->name, name);
+    strncpy(node->name, name, sizeof(node->name) - 1);
+    node->name[sizeof(node->name) - 1] = '\0';
     node->size = size;
     node->read = dynamic_mem_read;
     node->write = dev_null_write; // writing is ignored
@@ -40,12 +41,16 @@ static int dynamic_mem_write(vfs_node_t* node, uint32_t offset, uint32_t size, c
 void vfs_create_file(const char* name, uint32_t size) {
     if (vfs_node_count >= 32) return;
     vfs_node_t* node = &vfs_nodes[vfs_node_count++];
-    strcpy(node->name, name);
+    strncpy(node->name, name, sizeof(node->name) - 1);
+    node->name[sizeof(node->name) - 1] = '\0';
     node->size = size;
     node->read = dynamic_mem_read;
     node->write = dynamic_mem_write;
     node->private_data = kmalloc(size);
-    memset(node->private_data, 0, size);
+    // memset is handled by kmalloc now, but explicit memset doesn't hurt.
+    if (node->private_data) {
+        memset(node->private_data, 0, size);
+    }
 }
 
 // Standard stream nodes

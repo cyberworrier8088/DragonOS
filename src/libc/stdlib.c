@@ -31,30 +31,8 @@ void exit(int status) {
         extern void print_serial(const char* str);
         print_serial("[Doom] exit() called. Gracefully returning to desktop...\n");
         doom_running = 0;
-        
-        typedef struct {
-            int x, y, w, h;
-            char title[64];
-            int active;
-            int minimized;
-            int closed;
-            int dragging;
-            int drag_off_x, drag_off_y;
-            int id;
-            int maximized;
-            int old_x, old_y, old_w, old_h;
-        } stdlib_gui_window_t;
-        extern stdlib_gui_window_t* windows;
-        
-        if (windows) {
-            windows[4].closed = 1;
-            windows[4].minimized = 0;
-        }
-        extern int active_win_id;
-        active_win_id = -1;
-        extern int gui_was_clicked;
-        gui_was_clicked = 0;
-        
+        extern void gui_close_doom(void);
+        gui_close_doom();
         longjmp(doom_exit_jmp, 1);
     }
     
