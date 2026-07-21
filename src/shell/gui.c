@@ -11,6 +11,7 @@
 #include "fs/vfs.h"
 
 #include "../libc/stdlib.h"
+#include "../cpu/idt.h"
 // No setjmp.h needed
 
 gui_window_t* windows;
@@ -1724,3 +1725,88 @@ void gui_close_doom(void) {
     gui_was_clicked = 0;
 }
 
+static void gui_bsod_hex(uint32_t x, uint32_t y, uint64_t val, uint32_t color) {
+    char buf[20];
+    char* hex = "0123456789ABCDEF";
+    buf[19] = '\0';
+    int i = 18;
+    if (val == 0) {
+        buf[i--] = '0';
+    } else {
+        while (val > 0 && i >= 0) {
+            buf[i--] = hex[val % 16];
+            val /= 16;
+        }
+    }
+    buf[i--] = 'x';
+    buf[i] = '0';
+    
+    char* p = &buf[i];
+    while (*p) {
+        draw_char(x, y, *p, color);
+        x += 8;
+        p++;
+    }
+}
+
+static void gui_bsod_str(uint32_t x, uint32_t y, const char* str, uint32_t color) {
+    while (*str) {
+        draw_char(x, y, *str, color);
+        x += 8;
+        str++;
+    }
+}
+
+void gui_bsod(void* r_ptr, uint64_t cr2) {
+    registers_t* r = (registers_t*)r_ptr;
+    
+    // Disable clipping just in case
+    graphics_clear_clip();
+    
+    // Blue background
+    draw_rect(0, 0, 1024, 768, 0x0000AA);
+    
+    // Draw text
+    uint32_t white = 0xFFFFFF;
+    uint32_t start_y = 50;
+    
+    gui_bsod_str(50, start_y, "A fatal exception has occurred in DragonOS.", white);
+    start_y += 30;
+    gui_bsod_str(50, start_y, "The system has been halted to prevent damage to your computer.", white);
+    start_y += 30;
+    
+    gui_bsod_str(50, start_y, "VECTOR: ", white);
+    gui_bsod_hex(150, start_y, r->int_no, white);
+    start_y += 20;
+    
+    gui_bsod_str(50, start_y, "ERROR CODE: ", white);
+    gui_bsod_hex(150, start_y, r->err_code, white);
+    start_y += 20;
+    
+    gui_bsod_str(50, start_y, "RIP: ", white);
+    gui_bsod_hex(150, start_y, r->rip, white);
+    start_y += 20;
+    
+    gui_bsod_str(50, start_y, "RSP: ", white);
+    gui_bsod_hex(150, start_y, r->rsp, white);
+    start_y += 20;
+    
+    gui_bsod_str(50, start_y, "CR2: ", white);
+    gui_bsod_hex(150, start_y, cr2, white);
+    start_y += 30;
+    
+    gui_bsod_str(50, start_y, "RDI: ", white); gui_bsod_hex(100, start_y, r->rdi, white);
+    gui_bsod_str(250, start_y, "RSI: ", white); gui_bsod_hex(300, start_y, r->rsi, white);
+    start_y += 20;
+    gui_bsod_str(50, start_y, "RAX: ", white); gui_bsod_hex(100, start_y, r->rax, white);
+    gui_bsod_str(250, start_y, "RBX: ", white); gui_bsod_hex(300, start_y, r->rbx, white);
+    start_y += 20;
+    gui_bsod_str(50, start_y, "RCX: ", white); gui_bsod_hex(100, start_y, r->rcx, white);
+    gui_bsod_str(250, start_y, "RDX: ", white); gui_bsod_hex(300, start_y, r->rdx, white);
+    start_y += 40;
+    
+    gui_bsod_str(50, start_y, "Please restart your computer.", white);
+    
+    // Swap buffer to screen so it's visible
+    blit_buffer();
+}

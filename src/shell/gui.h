@@ -24,5 +24,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click);
 void gui_handle_keyboard(char c);
 void gui_write_char(char c);
 void gui_write_string(const char* str);
+void gui_bsod(void* registers, uint64_t cr2);
 
 #endif

@@ -3,6 +3,7 @@
 #include "../libc/string.h"
 #include "../libc/stdlib.h"
 #include "../drivers/serial.h"
+#include "../shell/gui.h"
 
 /* Game state flags and unwind targets used for fault isolation */
 extern int quake_running;
@@ -211,6 +212,7 @@ void isr_handler(registers_t* r) {
     }
 
     print_serial("Unhandled CPU Exception! System Halted.\n");
+    gui_bsod(r, cr2);
     __asm__ volatile("cli; hlt");
 }
 
