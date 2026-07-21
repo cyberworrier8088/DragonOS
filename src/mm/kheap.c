@@ -33,26 +33,36 @@ void* kmalloc(size_t size) {
     // 8-byte alignment using branchless bitwise math for maximum speed
     size = (size + 7) & ~7ULL;
 
-    heap_block_t* curr = heap_head;
-    while (curr) {
+    // Best-fit: pick the smallest free block that still satisfies the request.
+    // First-fit tends to shred large blocks early and strand the tail ends;
+    // best-fit keeps big blocks intact for big requests and cuts fragmentation
+    // on the mixed allocation sizes the games hammer the heap with.
+    heap_block_t* best = 0;
+    for (heap_block_t* curr = heap_head; curr; curr = curr->next) {
         if (curr->free && curr->size >= size) {
-            // Found a block. Can we split it?
-            if (curr->size > size + sizeof(heap_block_t) + 8) {
-                heap_block_t* new_block = (heap_block_t*)((uint8_t*)curr + sizeof(heap_block_t) + size);
-                new_block->size = curr->size - size - sizeof(heap_block_t);
-                new_block->free = 1;
-                new_block->next = curr->next;
-                
-                curr->size = size;
-                curr->next = new_block;
+            if (!best || curr->size < best->size) {
+                best = curr;
+                if (best->size == size) break; // exact fit -- can't do better
             }
-            curr->free = 0;
-            void* ret = (void*)((uint8_t*)curr + sizeof(heap_block_t));
-            memset(ret, 0, size); // Zero initialize for safety
-            __asm__ volatile("push %0; popfq" :: "r"(rflags));
-            return ret;
         }
-        curr = curr->next;
+    }
+
+    if (best) {
+        // Split the block if the leftover can hold a header plus a little payload.
+        if (best->size > size + sizeof(heap_block_t) + 8) {
+            heap_block_t* new_block = (heap_block_t*)((uint8_t*)best + sizeof(heap_block_t) + size);
+            new_block->size = best->size - size - sizeof(heap_block_t);
+            new_block->free = 1;
+            new_block->next = best->next;
+
+            best->size = size;
+            best->next = new_block;
+        }
+        best->free = 0;
+        void* ret = (void*)((uint8_t*)best + sizeof(heap_block_t));
+        memset(ret, 0, size); // Zero initialize for safety
+        __asm__ volatile("push %0; popfq" :: "r"(rflags));
+        return ret;
     }
 
     // Need more memory - allocate a chunk that is at least large enough for the requested size
