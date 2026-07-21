@@ -30,10 +30,8 @@ void* kmalloc(size_t size) {
     uint64_t rflags;
     __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
     
-    // 8-byte alignment
-    if (size % 8 != 0) {
-        size += 8 - (size % 8);
-    }
+    // 8-byte alignment using branchless bitwise math for maximum speed
+    size = (size + 7) & ~7ULL;
 
     heap_block_t* curr = heap_head;
     while (curr) {

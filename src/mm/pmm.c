@@ -22,6 +22,14 @@ static uint64_t buddy_free_heads[BUDDY_MAX_ORDER + 1];
 
 static uint64_t total_system_pages = 0;
 
+// O(1) order calculation using Bit Scan Reverse (bsr) machine instruction
+static inline int get_buddy_order(uint64_t count) {
+    if (count <= 1) return 0;
+    uint64_t bsr_res;
+    __asm__ volatile("bsrq %1, %0" : "=r"(bsr_res) : "r"(count - 1));
+    return (int)bsr_res + 1;
+}
+
 static inline free_block_t* get_block(uint64_t page_idx) {
     return (free_block_t*)(page_idx * PAGE_SIZE + pmm_hhdm_offset);
 }
@@ -136,11 +144,8 @@ void* pmm_alloc_pages(uint64_t count) {
     uint64_t rflags;
     __asm__ volatile("pushfq; pop %0; cli" : "=r"(rflags));
     
-    // Find the smallest order that fits count
-    int target_order = 0;
-    while ((1ULL << target_order) < count) {
-        target_order++;
-    }
+    // Find the smallest order that fits count instantly using machine code
+    int target_order = get_buddy_order(count);
     
     if (target_order > BUDDY_MAX_ORDER) {
         __asm__ volatile("push %0; popfq" :: "r"(rflags));
@@ -184,11 +189,8 @@ void pmm_free_pages(void* ptr, uint64_t count) {
     uint64_t phys = (uint64_t)ptr - pmm_hhdm_offset;
     uint64_t page_idx = phys / PAGE_SIZE;
     
-    // Determine the order from the allocated size count
-    int order = 0;
-    while ((1ULL << order) < count) {
-        order++;
-    }
+    // Determine the order instantly
+    int order = get_buddy_order(count);
     
     pmm_used_memory -= (1ULL << order) * PAGE_SIZE;
     pmm_free_memory += (1ULL << order) * PAGE_SIZE;
