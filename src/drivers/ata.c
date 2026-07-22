@@ -127,5 +127,14 @@ int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer) {
             outw(ATA_PRIMARY_DATA, ptr16[sector * 256 + i]);
         }
     }
+
+    /* Flush the drive's write cache so the data is actually persisted before we
+     * report success -- otherwise a reset/power loss can lose just-written
+     * sectors that the drive was still holding in its buffer. */
+    outb(ATA_PRIMARY_COMMAND, ATA_CMD_CACHE_FLUSH);
+    for (volatile int timeout = 0; timeout < 100000; timeout++) {
+        if (!(inb(ATA_PRIMARY_STATUS) & ATA_STATUS_BSY)) break;
+    }
+
     return 0;
 }

@@ -244,6 +244,12 @@ void kernel_main(void) {
     __asm__ volatile("sti");
     print_serial("[DragonOS] Hardware interrupts enabled. Starting desktop loop...\n");
 
+    /* Boot chime on the PC speaker (needs the timer, so it runs after sti).
+     * Silent on QEMU without an audio backend; audible on real hardware. */
+    extern void pcspeaker_beep(uint32_t freq, uint32_t ms);
+    pcspeaker_beep(784, 90);   // G5
+    pcspeaker_beep(1047, 110); // C6
+
     /* Desktop Rendering loop */
     extern uint32_t get_ticks(void);
     uint32_t last_game_ticks = get_ticks();

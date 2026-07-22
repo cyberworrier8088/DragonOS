@@ -137,13 +137,15 @@ static void keyboard_callback(registers_t* regs) {
             ascii = scancode_map[scancode];
         }
 
-        /* Apply Caps Lock state to letters only */
-        if (ascii >= 'a' && ascii <= 'z') {
-            if (caps_lock ^ shift_pressed) {
+        /* Apply Caps Lock to letters only. Shift is already baked in via the
+         * map selection above (shift -> uppercase map), so Caps Lock simply
+         * toggles that result. Using caps_lock alone here is correct; the old
+         * `caps_lock ^ shift_pressed` double-counted shift and inverted every
+         * shifted letter (Shift+a produced 'a' instead of 'A'). */
+        if (caps_lock) {
+            if (ascii >= 'a' && ascii <= 'z') {
                 ascii = ascii - 'a' + 'A';
-            }
-        } else if (ascii >= 'A' && ascii <= 'Z') {
-            if (caps_lock ^ shift_pressed) {
+            } else if (ascii >= 'A' && ascii <= 'Z') {
                 ascii = ascii - 'A' + 'a';
             }
         }

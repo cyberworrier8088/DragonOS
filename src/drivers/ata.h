@@ -15,6 +15,7 @@
 
 #define ATA_CMD_READ             0x20
 #define ATA_CMD_WRITE            0x30
+#define ATA_CMD_CACHE_FLUSH      0xE7
 #define ATA_CMD_IDENTIFY         0xEC
 
 #define ATA_STATUS_ERR           0x01

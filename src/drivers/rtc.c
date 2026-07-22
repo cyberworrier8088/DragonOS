@@ -45,3 +45,27 @@ void rtc_read_time(uint8_t* hours, uint8_t* minutes, uint8_t* seconds) {
     *minutes = min;
     *hours = hour;
 }
+
+void rtc_read_date(uint8_t* year, uint8_t* month, uint8_t* day) {
+    // Wait until update in progress flag is clear
+    for (volatile int timeout = 0; timeout < 10000; timeout++) {
+        if (!get_update_in_progress_flag()) break;
+    }
+
+    uint8_t d = get_rtc_register(0x07); // Day of month
+    uint8_t m = get_rtc_register(0x08); // Month
+    uint8_t y = get_rtc_register(0x09); // Year (two digits)
+
+    uint8_t registerB = get_rtc_register(0x0B);
+
+    // Convert BCD to binary if the RTC is not already in binary mode
+    if (!(registerB & 0x04)) {
+        d = (d & 0x0F) + ((d / 16) * 10);
+        m = (m & 0x0F) + ((m / 16) * 10);
+        y = (y & 0x0F) + ((y / 16) * 10);
+    }
+
+    *day = d;
+    *month = m;
+    *year = y;
+}

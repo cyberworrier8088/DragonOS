@@ -51,6 +51,7 @@ OBJS = boot.o \
        src/drivers/mouse.o \
        src/drivers/timer.o \
        src/drivers/keyboard.o \
+       src/drivers/pcspeaker.o \
        src/libc/string.o \
        src/libc/stdlib.o \
        src/libc/stdio.o \

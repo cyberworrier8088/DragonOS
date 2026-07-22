@@ -1,7 +1,10 @@
 #include "e1000.h"
 #include "../mm/kheap.h"
+#include "../mm/pmm.h"
 #include "serial.h"
 #include "../libc/string.h"
+
+#define E1000_TX_BUF_SIZE 2048
 
 static pci_device_t* e1000_device = 0;
 static uint32_t e1000_mmio_base = 0;
@@ -9,8 +12,17 @@ static uint8_t mac_addr[6];
 
 static struct e1000_rx_desc* rx_descs;
 static struct e1000_tx_desc* tx_descs;
+static void* tx_bufs[E1000_NUM_TX_DESC]; // per-descriptor bounce buffers (HHDM)
 
 static uint16_t tx_cur = 0;
+
+// The NIC's DMA engine works on PHYSICAL addresses. kmalloc/pmm hand back HHDM
+// virtual pointers, so anything programmed into a descriptor or a base-address
+// register must be translated first. Feeding the NIC a virtual address made it
+// DMA to the wrong physical memory (silently on QEMU, corruption on real HW).
+static inline uint64_t virt_to_phys(void* v) {
+    return (uint64_t)v - pmm_hhdm_offset;
+}
 
 static void write_command(uint16_t p_address, uint32_t p_value) {
     (*(volatile uint32_t*)((uint64_t)e1000_mmio_base + p_address)) = p_value;
@@ -34,7 +46,11 @@ static int detect_eeprom() {
 static uint16_t eeprom_read(uint8_t addr) {
     uint32_t tmp = 0;
     write_command(REG_EEPROM, (1) | ((uint32_t)(addr) << 8));
-    while(!((tmp = read_command(REG_EEPROM)) & (1 << 4)));
+    // Bounded wait for the DONE bit so a missing/odd EEPROM can't hang boot.
+    for (int i = 0; i < 100000; i++) {
+        tmp = read_command(REG_EEPROM);
+        if (tmp & (1 << 4)) break;
+    }
     return (uint16_t)((tmp >> 16) & 0xFFFF);
 }
 
@@ -62,33 +78,36 @@ static void read_mac_address() {
 static void rx_init() {
     rx_descs = (struct e1000_rx_desc*)kmalloc(sizeof(struct e1000_rx_desc) * E1000_NUM_RX_DESC);
     for(int i = 0; i < E1000_NUM_RX_DESC; i++) {
-        rx_descs[i].addr = (uint64_t)kmalloc(8192 + 16);
+        rx_descs[i].addr = virt_to_phys(kmalloc(8192 + 16)); // physical buffer for DMA
         rx_descs[i].status = 0;
     }
-    
-    write_command(REG_RDBAL, (uint32_t)((uint64_t)rx_descs));
-    write_command(REG_RDBAH, (uint32_t)(((uint64_t)rx_descs) >> 32));
+
+    uint64_t ring_phys = virt_to_phys(rx_descs);
+    write_command(REG_RDBAL, (uint32_t)(ring_phys & 0xFFFFFFFF));
+    write_command(REG_RDBAH, (uint32_t)(ring_phys >> 32));
     write_command(REG_RDLEN, E1000_NUM_RX_DESC * 16);
     write_command(REG_RDH, 0);
     write_command(REG_RDT, E1000_NUM_RX_DESC - 1);
-    
+
     write_command(REG_RCTL, RCTL_EN | RCTL_SBP | RCTL_UPE | RCTL_MPE | RCTL_LPE | RCTL_BAM | RCTL_SECRC);
 }
 
 static void tx_init() {
     tx_descs = (struct e1000_tx_desc*)kmalloc(sizeof(struct e1000_tx_desc) * E1000_NUM_TX_DESC);
     for(int i = 0; i < E1000_NUM_TX_DESC; i++) {
+        tx_bufs[i] = kmalloc(E1000_TX_BUF_SIZE);
         tx_descs[i].addr = 0;
         tx_descs[i].cmd = 0;
-        tx_descs[i].status = 1;
+        tx_descs[i].status = 1; // DD set: descriptor is free
     }
-    
-    write_command(REG_TDBAL, (uint32_t)((uint64_t)tx_descs));
-    write_command(REG_TDBAH, (uint32_t)(((uint64_t)tx_descs) >> 32));
+
+    uint64_t ring_phys = virt_to_phys(tx_descs);
+    write_command(REG_TDBAL, (uint32_t)(ring_phys & 0xFFFFFFFF));
+    write_command(REG_TDBAH, (uint32_t)(ring_phys >> 32));
     write_command(REG_TDLEN, E1000_NUM_TX_DESC * 16);
     write_command(REG_TDH, 0);
     write_command(REG_TDT, 0);
-    
+
     write_command(REG_TCTL, TCTL_EN | TCTL_PSP);
 }
 
@@ -135,18 +154,26 @@ void e1000_init(void) {
 
 void e1000_send_packet(const void* p_data, uint16_t p_len) {
     if (!e1000_device) return;
-    
-    tx_descs[tx_cur].addr = (uint64_t)p_data;
+    if (p_len > E1000_TX_BUF_SIZE) p_len = E1000_TX_BUF_SIZE;
+
+    // Copy into the descriptor's bounce buffer and hand the NIC its physical
+    // address. This makes any caller pointer valid and keeps the DMA source
+    // stable for the duration of the transfer.
+    memcpy(tx_bufs[tx_cur], p_data, p_len);
+    tx_descs[tx_cur].addr = virt_to_phys(tx_bufs[tx_cur]);
     tx_descs[tx_cur].length = p_len;
     tx_descs[tx_cur].cmd = CMD_EOP | CMD_IFCS | CMD_RS;
     tx_descs[tx_cur].status = 0;
-    
-    uint8_t old_cur = tx_cur;
+
+    uint16_t old_cur = tx_cur;
     tx_cur = (tx_cur + 1) % E1000_NUM_TX_DESC;
     write_command(REG_TDT, tx_cur);
-    
-    // Wait for packet to be sent
-    while(!(tx_descs[old_cur].status & 0xFF));
+
+    // Wait for the NIC to set the Descriptor Done bit, bounded so a stalled
+    // link can never hang the caller forever.
+    for (volatile int t = 0; t < 5000000; t++) {
+        if (tx_descs[old_cur].status & 0xFF) break;
+    }
 }
 
 uint8_t* e1000_get_mac_address(void) {

@@ -31,3 +31,12 @@ void print_serial(const char* data) {
         write_serial(data[i]);
     }
 }
+
+int serial_available(void) {
+    return inb(SERIAL_PORT_COM1 + 5) & 0x01; // LSR bit 0: Data Ready
+}
+
+char serial_read_char(void) {
+    while (!serial_available());
+    return (char)inb(SERIAL_PORT_COM1);
+}
