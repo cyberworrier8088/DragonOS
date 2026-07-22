@@ -12,16 +12,17 @@ The kernel is linked in the higher-half virtual address space (`0xffffffff800000
 *   DOOM (doomgeneric) port running in a desktop window
 *   Native applications: Terminal, Calculator, File Explorer, System Monitor, 2048, Lua interpreter, Tiny C Compiler
 *   POSIX-style VFS layer (`open`/`read`/`write`/`lseek`/`close`, `O_CREAT`/`O_TRUNC`/`O_APPEND`, `unlink`)
-*   Buddy physical memory allocator, kernel heap with O(1)/O(N) free-block coalescing, 4-level paging
-*   Fault isolation: a CPU exception raised inside a game terminates only the game and unwinds back to the desktop rather than halting the system
+*   Buddy physical memory allocator, kernel heap with O(1)/O(N) free-block coalescing, 4-level paging with `paging_make_user` page-table permissions
+*   Preemptive multi-threading and Ring 3 user space with Task State Segment (TSS) `RSP0` stack switching, software interrupt system calls (`int 0x80`), cooperative yielding (`sys_yield`), and safe thread exit (`sys_exit`)
+*   Fault isolation: a CPU exception raised inside a game or Ring 3 user task terminates only the faulting process and unwinds back to the desktop shell rather than halting the system
 
 ## Architecture and Source Layout
 
-*   **src/boot.asm**: 64-bit bootstrap. Loads the GDT, reloads segment selectors, switches to a dedicated 4MB kernel stack reserved in BSS, and calls `kernel_main`. The bootloader-provided stack is deliberately abandoned because its size is not guaranteed to accommodate deep C call chains.
+*   **src/boot.asm**: 64-bit bootstrap. Loads the initial GDT, reloads segment selectors, switches to a dedicated 4MB kernel stack reserved in BSS, and calls `kernel_main`. The bootloader-provided stack is deliberately abandoned because its size is not guaranteed to accommodate deep C call chains.
 *   **src/linker.ld**: Links the kernel at `0xffffffff80000000` and places the Limine request section.
-*   **src/kernel.c**: Entry point. Fetches framebuffer details, initializes drivers, registers Limine modules with the VFS, and runs the desktop loop. The loop passes real PIT-measured frame times to the Quake host and yields with `hlt` between game frames; when idle it throttles to approximately 60 FPS.
-*   **src/cpu/**: GDT/IDT management, ISR/IRQ assembly stubs, port I/O. The exception handler logs vector, error code, RIP, and CR2 to serial. If the fault originated inside a running game, the handler re-enables interrupts and performs a `longjmp` back to the desktop loop instead of halting.
-*   **src/mm/**: Buddy physical page allocator, kernel heap (`kmalloc`/`kfree` with block coalescing), and 4-level paging with TLB invalidation on table updates.
+*   **src/kernel.c**: Entry point. Fetches framebuffer details, initializes drivers, registers Limine modules with the VFS, sets up page permissions and scheduler tasks, and runs the desktop loop. The loop passes real PIT-measured frame times to the Quake host and yields with `hlt` between game frames; when idle it throttles to approximately 60 FPS.
+*   **src/cpu/**: 64-bit GDT and TSS initialization (`gdt.c`), IDT vector installation (`idt.c`), assembly interrupt stubs (`interrupt.asm`), scheduler subsystem (`scheduler.c`), and port I/O. Vector `0x80` acts as the Ring 3 system call gate. The exception handler logs vector, error code, RIP, and CR2 to serial. Exceptions occurring in Ring 3 log the fault, terminate the faulting task, and trigger a context switch, preserving overall OS stability.
+*   **src/mm/**: Buddy physical page allocator (`pmm.c`), kernel heap (`kheap.c` with best-fit allocation and block coalescing), and 4-level paging (`paging.c`) supporting page permissions adjustment (`paging_make_user`) and TLB line invalidations (`invlpg`).
 *   **src/drivers/**: Framebuffer graphics (double-buffered, clipped primitives, alpha blending), PS/2 keyboard and mouse (IRQ1/IRQ12), PIT timer at 100Hz, UART serial, RTC, PCI enumeration, ATA.
 *   **src/fs/**: In-memory POSIX-style VFS. Limine boot modules (game data, wallpaper, scripts) are registered as read-only files; dynamically created files are heap-backed.
 *   **src/libc/**: Freestanding C runtime subset: string/memory routines, `printf` family, `setjmp`/`longjmp`, math functions, and a stdio layer that maps `FILE*` operations onto VFS file descriptors.
