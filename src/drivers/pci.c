@@ -17,6 +17,22 @@ uint32_t pci_read_config_dword(uint8_t bus, uint8_t slot, uint8_t func, uint8_t 
     return inl(0xCFC);
 }
 
+void pci_write_config_dword(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint32_t value) {
+    uint32_t address = ((uint32_t)bus << 16) |
+                       ((uint32_t)slot << 11) |
+                       ((uint32_t)func << 8) |
+                       (offset & 0xFC) |
+                       0x80000000;
+    outl(0xCF8, address);
+    outl(0xCFC, value);
+}
+
+void pci_enable_bus_master(pci_device_t* device) {
+    uint32_t reg4 = pci_read_config_dword(device->bus, device->slot, device->func, 0x04);
+    reg4 |= (1 << 2); // Bit 2 is Bus Master Enable
+    pci_write_config_dword(device->bus, device->slot, device->func, 0x04, reg4);
+}
+
 const char* pci_get_class_name(uint8_t class_code) {
     switch (class_code) {
         case 0x00: return "Unclassified";

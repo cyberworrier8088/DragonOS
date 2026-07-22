@@ -177,6 +177,10 @@ void kernel_main(void) {
     /* Initialize PCI Bus scanner */
     pci_init();
 
+    /* Initialize E1000 Network Driver */
+    extern void e1000_init(void);
+    e1000_init();
+
     /* Initialize ATA/IDE Disk Controller */
     extern void ata_init(void);
     ata_init();

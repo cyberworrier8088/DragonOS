@@ -61,6 +61,7 @@ OBJS = boot.o \
        src/drivers/pci.o \
        src/drivers/rtc.o \
        src/drivers/ata.o \
+       src/drivers/e1000.o \
        src/fs/vfs.o \
        $(DOOM_OBJS) \
        $(QUAKE_OBJS) \

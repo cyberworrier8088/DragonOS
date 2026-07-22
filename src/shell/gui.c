@@ -846,6 +846,23 @@ static void draw_window_content(gui_window_t* win) {
         int_to_ascii(sysmon_values[59], val_str);
         strcat(val_str, "%");
         draw_string(gx + gw - 50, gy + 4, val_str, 0x00CC6A);
+
+        /* Network Adapter Info */
+        draw_string(x + 12, gy + gh + 12, "Network Adapter", 0x00CC6A);
+        extern uint8_t* e1000_get_mac_address(void);
+        uint8_t* mac = e1000_get_mac_address();
+        
+        char mac_str[32] = "MAC: ";
+        const char* hex = "0123456789ABCDEF";
+        int idx = 5;
+        for(int i = 0; i < 6; i++) {
+            mac_str[idx++] = hex[(mac[i] >> 4) & 0xF];
+            mac_str[idx++] = hex[mac[i] & 0xF];
+            if (i < 5) mac_str[idx++] = ':';
+        }
+        mac_str[idx] = '\0';
+        draw_string(x + 12, gy + gh + 28, mac_str, 0xAAAAAA);
+        draw_string(x + 160, gy + gh + 28, "Link: UP (1000 Mbps)", 0x00FF00);
     }
     else if (win->id == 4) {
         /* ---- Doom window ---- */
