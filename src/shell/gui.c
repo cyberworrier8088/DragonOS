@@ -80,6 +80,13 @@ static int op2 = 0;
 static char calc_op = 0;
 static int calc_new_number = 1;
 
+/* Code Editor Window State */
+#define EDITOR_BUF_SIZE 16384
+static char editor_buf[EDITOR_BUF_SIZE] = "";
+static int editor_cursor = 0;
+static char editor_filename[64] = "untitled.txt";
+
+
 /* System Monitor State (scrolling line graph) */
 static int sysmon_values[60];
 static int val_timer = 0;
@@ -473,6 +480,18 @@ void init_gui(void) {
     windows[7].minimized = 0;
     windows[7].dragging = 0;
     windows[7].id = 7;
+
+    /* 8: Code Editor */
+    windows[8].x = 150;
+    windows[8].y = 100;
+    windows[8].w = 500;
+    windows[8].h = 400;
+    strcpy(windows[8].title, "Code Editor");
+    windows[8].active = 0;
+    windows[8].closed = 1;
+    windows[8].minimized = 0;
+    windows[8].dragging = 0;
+    windows[8].id = 8;
 
     for (int i = 0; i < MAX_WINDOWS; i++) {
         windows[i].maximized = 0;
@@ -954,6 +973,9 @@ static void draw_window_content(gui_window_t* win) {
         }
     } else if (win->id == 6) {
         gui_draw_2048(x, content_y, w, content_h);
+    } else if (win->id == 8) {
+        extern void gui_draw_editor(int x, int y, int w, int h);
+        gui_draw_editor(x, content_y, w, content_h);
     }
     
     graphics_clear_clip();
@@ -1040,6 +1062,74 @@ static void gui_draw_2048(int x, int y, int w, int h) {
     draw_string(x + 16, y + h - 22, "WASD: Slide tiles | R: Reset Game", 0x776E65);
 }
 
+void gui_draw_editor(int x, int y, int w, int h) {
+    draw_rect(x, y, w, h, 0x1E1E1E); // VSCode dark background
+
+    // Toolbar area
+    draw_rect(x, y, w, 30, 0x333333);
+    
+    int btn_w = 60, btn_h = 22, btn_y = y + 4;
+    
+    // Save button
+    draw_rounded_rect(x + 10, btn_y, btn_w, btn_h, 4, 0x0E639C);
+    draw_string(x + 22, btn_y + 6, "Save", 0xFFFFFF);
+
+    // Load button
+    draw_rounded_rect(x + 80, btn_y, btn_w, btn_h, 4, 0x0E639C);
+    draw_string(x + 92, btn_y + 6, "Load", 0xFFFFFF);
+
+    // Clear button
+    draw_rounded_rect(x + 150, btn_y, btn_w, btn_h, 4, 0x0E639C);
+    draw_string(x + 158, btn_y + 6, "Clear", 0xFFFFFF);
+
+    // Filename
+    draw_string(x + 230, btn_y + 6, editor_filename, 0xAAAAAA);
+
+    // Text Area
+    int text_x = x + 10;
+    int text_y = y + 40;
+    int cur_x = text_x;
+    int cur_y = text_y;
+    int line_h = 16;
+    
+    int cursor_pixel_x = cur_x;
+    int cursor_pixel_y = cur_y;
+
+    int i = 0;
+    while (editor_buf[i] && cur_y < y + h - line_h) {
+        if (i == editor_cursor) {
+            cursor_pixel_x = cur_x;
+            cursor_pixel_y = cur_y;
+        }
+
+        if (editor_buf[i] == '\n') {
+            cur_x = text_x;
+            cur_y += line_h;
+        } else {
+            char str[2] = { editor_buf[i], '\0' };
+            draw_string(cur_x, cur_y, str, 0xD4D4D4);
+            cur_x += 8;
+        }
+        i++;
+    }
+
+    if (i == editor_cursor) {
+        cursor_pixel_x = cur_x;
+        cursor_pixel_y = cur_y;
+    }
+
+    if (active_win_id == 8) {
+        extern uint32_t get_ticks(void);
+        if ((get_ticks() % 100) < 50) {
+            draw_rect(cursor_pixel_x, cursor_pixel_y, 8, 14, 0x0078D4);
+            if (editor_cursor < EDITOR_BUF_SIZE && editor_buf[editor_cursor] != '\n' && editor_buf[editor_cursor] != 0) {
+                 char str[2] = { editor_buf[editor_cursor], '\0' };
+                 draw_string(cursor_pixel_x, cursor_pixel_y, str, 0x1E1E1E);
+            }
+        }
+    }
+}
+
 /* ============================================================
  * Main GUI Draw
  * ============================================================ */
@@ -1094,13 +1184,15 @@ void gui_draw(void) {
         draw_string(sm_x + 20, sm_y + 60, "Pinned", 0xFFFFFF);
         draw_string(sm_x + sm_w - 80, sm_y + 60, "All apps >", 0x60CDFF);
 
-        /* Pinned apps grid (3x2) */
-        struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[6] = {
+        /* Pinned apps grid (4x2) */
+        struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[8] = {
             {"System",   0x0078D4, "PC",  0},
             {"Terminal", 0x0C0C0C, ">_",  1},
             {"Calc",     0x3B3B3B, "+-",  2},
+            {"Code",     0x1E1E1E, "{ }", 8},
             {"Explorer", 0xDF8A10, "FE",  5},
             {"Doom",     0xC21807, "DM",  4},
+            {"Quake",    0x4F4F4F, "Q1",  7},
             {"2048",     0xEDC22E, "2K",  6},
         };
 
@@ -1110,7 +1202,7 @@ void gui_draw(void) {
         int tile_h = 54;
         int gap = 8;
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 8; i++) {
             int col = i % 2;
             int row = i / 2;
             int tx = grid_x + col * (tile_w + gap);
@@ -1375,17 +1467,18 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
             int tile_h = 54;
             int gap = 8;
 
-            struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[7] = {
+            struct { const char* name; uint32_t color; const char* sym; int win_id; } pinned[8] = {
                 {"System",   0x0078D4, "PC",  0},
                 {"Terminal", 0x0C0C0C, ">_",  1},
                 {"Calc",     0x3B3B3B, "+-",  2},
+                {"Code",     0x1E1E1E, "{ }", 8},
                 {"Explorer", 0xDF8A10, "FE",  5},
                 {"Doom",     0xC21807, "DM",  4},
+                {"Quake",    0x4F4F4F, "Q1",  7},
                 {"2048",     0xEDC22E, "2K",  6},
-                {"Quake 1",  0x8B4513, "Q1",  7},
             };
 
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < 8; i++) {
                 int col = i % 2;
                 int row = i / 2;
                 int tx = grid_x + col * (tile_w + gap);
@@ -1598,6 +1691,51 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     }
                 }
                 
+                /* Code Editor clicks */
+                if (win->id == 8) {
+                    int content_y = win->y + 32;
+                    int btn_y = content_y + 4;
+                    int btn_w = 60;
+                    int btn_h = 22;
+
+                    // Save
+                    if (mx >= win->x + 10 && mx < win->x + 10 + btn_w && my >= btn_y && my < btn_y + btn_h) {
+                        extern void vfs_create_file(const char* name, uint32_t size);
+                        vfs_create_file(editor_filename, EDITOR_BUF_SIZE);
+                        int fd = open(editor_filename, 0);
+                        if (fd >= 0) {
+                            write(fd, editor_buf, strlen(editor_buf));
+                            close(fd);
+                        }
+                        gui_write_string("Editor: Saved to ");
+                        gui_write_string(editor_filename);
+                        gui_write_string("\n");
+                    }
+                    // Load
+                    else if (mx >= win->x + 80 && mx < win->x + 80 + btn_w && my >= btn_y && my < btn_y + btn_h) {
+                        int fd = open(editor_filename, 0);
+                        if (fd >= 0) {
+                            int bytes = read(fd, editor_buf, EDITOR_BUF_SIZE - 1);
+                            if (bytes >= 0) {
+                                editor_buf[bytes] = '\0';
+                                editor_cursor = bytes;
+                            }
+                            close(fd);
+                        }
+                    }
+                    // Clear
+                    else if (mx >= win->x + 150 && mx < win->x + 150 + btn_w && my >= btn_y && my < btn_y + btn_h) {
+                        editor_buf[0] = '\0';
+                        editor_cursor = 0;
+                    }
+                    // Click in text area sets cursor to end for now
+                    else if (my >= content_y + 40 && my < win->y + win->h) {
+                        int len = 0;
+                        while(editor_buf[len]) len++;
+                        editor_cursor = len;
+                    }
+                }
+                
                 /* File Explorer clicks */
                 if (win->id == 5) {
                     int content_y = win->y + 32;
@@ -1690,6 +1828,30 @@ void gui_handle_keyboard(char c) {
         else if (c == 'a' || c == 'A') move_2048(2);
         else if (c == 'd' || c == 'D') move_2048(3);
         else if (c == 'r' || c == 'R') init_2048();
+        return;
+    }
+
+    if (active_win_id == 8) {
+        if (c == '\b') {
+            if (editor_cursor > 0) {
+                // simple backspace (shift everything left)
+                for (int i = editor_cursor - 1; i < EDITOR_BUF_SIZE - 1; i++) {
+                    editor_buf[i] = editor_buf[i + 1];
+                }
+                editor_cursor--;
+            }
+        } else if (c == '\n' || (c >= 32 && c <= 126) || c == '\t') {
+            // insert char (shift everything right)
+            int len = 0;
+            while(editor_buf[len]) len++;
+            if (len < EDITOR_BUF_SIZE - 1) {
+                for (int i = len; i >= editor_cursor; i--) {
+                    editor_buf[i + 1] = editor_buf[i];
+                }
+                editor_buf[editor_cursor] = c;
+                editor_cursor++;
+            }
+        }
         return;
     }
 
