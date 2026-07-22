@@ -85,6 +85,8 @@ static int calc_new_number = 1;
 static char editor_buf[EDITOR_BUF_SIZE] = "";
 static int editor_cursor = 0;
 static char editor_filename[64] = "untitled.txt";
+static char editor_output_buf[8192] = "";
+static int editor_capturing_output = 0;
 
 
 /* System Monitor State (scrolling line graph) */
@@ -143,6 +145,16 @@ static const char cursor_bitmap[22][16] = {
 
 /* Custom print helper for Terminal GUI Window */
 void gui_write_char(char c) {
+    if (editor_capturing_output) {
+        int len = 0;
+        while(editor_output_buf[len]) len++;
+        if (len < (int)sizeof(editor_output_buf) - 2) {
+            editor_output_buf[len] = c;
+            editor_output_buf[len+1] = '\0';
+        }
+        return;
+    }
+
     if (c == '\n') {
         term_line_count++;
         if (term_line_count >= 18) {
@@ -1082,8 +1094,17 @@ void gui_draw_editor(int x, int y, int w, int h) {
     draw_rounded_rect(x + 150, btn_y, btn_w, btn_h, 4, 0x0E639C);
     draw_string(x + 158, btn_y + 6, "Clear", 0xFFFFFF);
 
+    // Run button
+    draw_rounded_rect(x + 220, btn_y, btn_w, btn_h, 4, 0x0F7B0F); // Green run
+    draw_string(x + 236, btn_y + 6, "Run", 0xFFFFFF);
+
     // Filename
-    draw_string(x + 230, btn_y + 6, editor_filename, 0xAAAAAA);
+    draw_string(x + 300, btn_y + 6, editor_filename, 0xAAAAAA);
+
+    // Layout
+    int text_h = (h - 30) * 7 / 10;
+    int output_y = y + 30 + text_h;
+    int output_h = h - 30 - text_h;
 
     // Text Area
     int text_x = x + 10;
@@ -1096,10 +1117,54 @@ void gui_draw_editor(int x, int y, int w, int h) {
     int cursor_pixel_y = cur_y;
 
     int i = 0;
-    while (editor_buf[i] && cur_y < y + h - line_h) {
+    int in_string = 0;
+    int in_comment = 0;
+    int keyword_countdown = 0;
+
+    auto int is_alpha(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+    };
+
+    while (editor_buf[i] && cur_y < output_y - line_h) {
         if (i == editor_cursor) {
             cursor_pixel_x = cur_x;
             cursor_pixel_y = cur_y;
+        }
+
+        uint32_t color = 0xD4D4D4; // default
+
+        if (in_comment) {
+            color = 0x6A9955;
+            if (editor_buf[i] == '\n') in_comment = 0;
+        } else if (in_string) {
+            color = 0xCE9178;
+            if (editor_buf[i] == '"') in_string = 0;
+        } else {
+            if (editor_buf[i] == '"') {
+                in_string = 1;
+                color = 0xCE9178;
+            } else if (editor_buf[i] == '/' && editor_buf[i+1] == '/') {
+                in_comment = 1;
+                color = 0x6A9955;
+            } else {
+                if (keyword_countdown == 0) {
+                    if (i == 0 || (!is_alpha(editor_buf[i-1]) && editor_buf[i-1] < '0')) {
+                        const char* keywords[] = {"int", "void", "return", "if", "else", "while", "for", "char", "static", "extern", "local", "function", "end", NULL};
+                        for (int k = 0; keywords[k]; k++) {
+                            int len = strlen(keywords[k]);
+                            if (strncmp(&editor_buf[i], keywords[k], len) == 0 && !is_alpha(editor_buf[i+len]) && (editor_buf[i+len] < '0' || editor_buf[i+len] > '9')) {
+                                keyword_countdown = len;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (keyword_countdown > 0) {
+                    color = 0x569CD6; // blue
+                    keyword_countdown--;
+                }
+            }
         }
 
         if (editor_buf[i] == '\n') {
@@ -1107,7 +1172,7 @@ void gui_draw_editor(int x, int y, int w, int h) {
             cur_y += line_h;
         } else {
             char str[2] = { editor_buf[i], '\0' };
-            draw_string(cur_x, cur_y, str, 0xD4D4D4);
+            draw_string(cur_x, cur_y, str, color);
             cur_x += 8;
         }
         i++;
@@ -1127,6 +1192,25 @@ void gui_draw_editor(int x, int y, int w, int h) {
                  draw_string(cursor_pixel_x, cursor_pixel_y, str, 0x1E1E1E);
             }
         }
+    }
+
+    // Output Pane
+    draw_rect(x, output_y, w, output_h, 0x000000); // Black terminal
+    draw_rect(x, output_y, w, 2, 0x444444); // Separator
+    
+    int out_x = x + 10;
+    int out_y = output_y + 10;
+    int oi = 0;
+    while(editor_output_buf[oi] && out_y < y + h - line_h) {
+        if (editor_output_buf[oi] == '\n') {
+            out_x = x + 10;
+            out_y += line_h;
+        } else {
+            char str[2] = { editor_output_buf[oi], '\0' };
+            draw_string(out_x, out_y, str, 0xCCCCCC);
+            out_x += 8;
+        }
+        oi++;
     }
 }
 
@@ -1728,6 +1812,22 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                         editor_buf[0] = '\0';
                         editor_cursor = 0;
                     }
+                    // Run
+                    else if (mx >= win->x + 220 && mx < win->x + 220 + btn_w && my >= btn_y && my < btn_y + btn_h) {
+                        editor_capturing_output = 1;
+                        editor_output_buf[0] = '\0'; // Clear previous output
+                        
+                        int len = strlen(editor_filename);
+                        if (len > 4 && strcmp(editor_filename + len - 4, ".lua") == 0) {
+                            extern int lua_main_string(const char* code);
+                            lua_main_string(editor_buf);
+                        } else {
+                            extern int tcc_main_string(const char* code);
+                            tcc_main_string(editor_buf);
+                        }
+                        
+                        editor_capturing_output = 0;
+                    }
                     // Click in text area sets cursor to end for now
                     else if (my >= content_y + 40 && my < win->y + win->h) {
                         int len = 0;
@@ -1813,6 +1913,43 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 
     if (!click) {
         gui_was_clicked = 0;
+    }
+}
+
+void gui_handle_special_key(int key) {
+    if (active_win_id == 8) {
+        if (key == 75) { // Left
+            if (editor_cursor > 0) editor_cursor--;
+        } else if (key == 77) { // Right
+            if (editor_buf[editor_cursor] != '\0') editor_cursor++;
+        } else if (key == 72) { // Up
+            int col = 0;
+            int t = editor_cursor - 1;
+            while(t >= 0 && editor_buf[t] != '\n') { col++; t--; }
+            int c = editor_cursor - 1;
+            while(c >= 0 && editor_buf[c] != '\n') c--;
+            if (c >= 0) {
+                int start = c - 1;
+                while (start >= 0 && editor_buf[start] != '\n') start--;
+                start++;
+                int target = start + col;
+                if (target > c) target = c;
+                editor_cursor = target;
+            }
+        } else if (key == 80) { // Down
+            int col = 0;
+            int t = editor_cursor - 1;
+            while(t >= 0 && editor_buf[t] != '\n') { col++; t--; }
+            
+            int c = editor_cursor;
+            while(editor_buf[c] && editor_buf[c] != '\n') c++;
+            if (editor_buf[c] == '\n') {
+                c++;
+                int start = c;
+                while(editor_buf[c] && editor_buf[c] != '\n' && (c - start) < col) c++;
+                editor_cursor = c;
+            }
+        }
     }
 }
 

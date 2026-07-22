@@ -117,8 +117,15 @@ static void keyboard_callback(registers_t* regs) {
         return;
     }
 
-    /* Only type characters if it is NOT an E0 extended key (like arrows) */
-    if (!e0_prefix && scancode < sizeof(scancode_map)) {
+    /* Handle E0 extended keys like arrows */
+    if (e0_prefix) {
+        if (scancode == 72 || scancode == 80 || scancode == 75 || scancode == 77) {
+            extern void gui_handle_special_key(int key);
+            gui_handle_special_key(scancode);
+        }
+    } 
+    /* Type normal characters */
+    else if (scancode < sizeof(scancode_map)) {
         char ascii = 0;
         if (shift_pressed) {
             if (scancode < sizeof(scancode_shift_map)) {
