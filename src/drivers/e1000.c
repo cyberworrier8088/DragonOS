@@ -1,10 +1,19 @@
 #include "e1000.h"
 #include "../mm/kheap.h"
 #include "../mm/pmm.h"
+#include "../mm/paging.h"
 #include "serial.h"
 #include "../libc/string.h"
 
 #define E1000_TX_BUF_SIZE 2048
+
+// Register window to map for the NIC BAR. Limine's HHDM only guarantees
+// coverage of memory listed in the bootloader's memory map; a PCI BAR window
+// (assigned by firmware into the "PCI hole" below 4GB) usually is NOT listed
+// there, so the HHDM alias of it is not actually backed by a present PTE --
+// confirmed by a page fault at hhdm_offset+phys even after adding the offset
+// correctly. 128KB covers every register this driver touches with headroom.
+#define E1000_MMIO_MAP_SIZE 0x20000
 
 static pci_device_t* e1000_device = 0;
 static uint64_t e1000_mmio_base = 0; // VIRTUAL (HHDM) base of the NIC registers
@@ -132,6 +141,14 @@ void e1000_init(void) {
         return;
     }
     e1000_mmio_base = (uint64_t)mmio_phys + pmm_hhdm_offset;
+
+    // Explicitly back this MMIO window with present page table entries at its
+    // HHDM address. Without this, the HHDM alias faults (not-present) even
+    // though the offset arithmetic is correct, because Limine never mapped a
+    // "hole" address like a PCI BAR in the first place.
+    for (uint64_t off = 0; off < E1000_MMIO_MAP_SIZE; off += PAGE_SIZE) {
+        paging_map(e1000_mmio_base + off, (uint64_t)mmio_phys + off, PAGE_PRESENT | PAGE_WRITE);
+    }
     
     print_serial("[E1000] Device found! Init MMIO...\n");
     
