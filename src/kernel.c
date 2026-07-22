@@ -152,11 +152,10 @@ void kernel_main(void) {
         pmm_init(memmap_request.response, hhdm_request.response->offset);
         kheap_init();
         print_serial("[DragonOS] Physical Memory Manager and Kernel Heap initialized.\n");
-        
-        scheduler_init();
-        create_user_task(user_mode_task_1, "UserTask1");
-        create_user_task(user_mode_task_2, "UserTask2");
 
+        // Paging must be live before the scheduler creates user tasks:
+        // create_user_task() calls paging_make_user() to grant Ring 3 access
+        // to each task's code and stack, which needs the active PML4.
         init_paging();
         // Test Paging by mapping 0x1000000000 -> 0x1000000 physical
         paging_map(0x1000000000ULL, 0x1000000ULL, PAGE_PRESENT | PAGE_WRITE | PAGE_USER);
@@ -166,6 +165,10 @@ void kernel_main(void) {
         } else {
             print_serial("[DragonOS] Paging Test FAILED!\n");
         }
+
+        scheduler_init();
+        create_user_task(user_mode_task_1, "UserTask1");
+        create_user_task(user_mode_task_2, "UserTask2");
     } else {
         print_serial("[DragonOS] Error: Limine did not provide a memory map or HHDM!\n");
     }

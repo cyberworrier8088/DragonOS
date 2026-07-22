@@ -81,6 +81,41 @@ void paging_unmap(uint64_t virt) {
     invlpg(virt);
 }
 
+void paging_make_user(uint64_t virt, uint64_t size) {
+    if (size == 0) return;
+
+    uint64_t start = virt & ~0xFFFULL;
+    uint64_t end   = (virt + size + PAGE_SIZE - 1) & ~0xFFFULL;
+
+    for (uint64_t addr = start; addr < end; addr += PAGE_SIZE) {
+        uint64_t i4 = (addr >> 39) & 0x1FF;
+        uint64_t i3 = (addr >> 30) & 0x1FF;
+        uint64_t i2 = (addr >> 21) & 0x1FF;
+        uint64_t i1 = (addr >> 12) & 0x1FF;
+
+        // The User bit is AND-ed across all levels, so every table entry on the
+        // path -- plus the final leaf -- must have it set. Stop early at a huge
+        // page (PS bit): that entry *is* the leaf.
+        if (!(pml4_table[i4] & PAGE_PRESENT)) continue;
+        pml4_table[i4] |= PAGE_USER;
+        uint64_t* pdpt = (uint64_t*)((pml4_table[i4] & 0x000FFFFFFFFFF000ULL) + pmm_hhdm_offset);
+
+        if (!(pdpt[i3] & PAGE_PRESENT)) continue;
+        pdpt[i3] |= PAGE_USER;
+        if (pdpt[i3] & PAGE_HUGE) { invlpg(addr); continue; } // 1GB page
+        uint64_t* pd = (uint64_t*)((pdpt[i3] & 0x000FFFFFFFFFF000ULL) + pmm_hhdm_offset);
+
+        if (!(pd[i2] & PAGE_PRESENT)) continue;
+        pd[i2] |= PAGE_USER;
+        if (pd[i2] & PAGE_HUGE) { invlpg(addr); continue; } // 2MB page
+        uint64_t* pt = (uint64_t*)((pd[i2] & 0x000FFFFFFFFFF000ULL) + pmm_hhdm_offset);
+
+        if (!(pt[i1] & PAGE_PRESENT)) continue;
+        pt[i1] |= PAGE_USER;
+        invlpg(addr);
+    }
+}
+
 uint64_t paging_walk(uint64_t virt) {
     uint64_t pml4_idx = (virt >> 39) & 0x1FF;
     uint64_t pdpt_idx = (virt >> 30) & 0x1FF;

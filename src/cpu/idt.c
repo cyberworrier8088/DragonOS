@@ -24,7 +24,10 @@ static void syscall_handler(registers_t* r) {
     if (r->rax == 1) { // sys_print
         print_serial((const char*)r->rbx);
     } else if (r->rax == 2) { // sys_yield
-        schedule(r);
+        // Cooperative hint only. int 0x80 enters through the ISR stub, which
+        // does not perform a task switch on return, so calling schedule() here
+        // would desync current_task from the frame actually resumed. The 100Hz
+        // timer preempts this task shortly anyway.
     } else if (r->rax == 3) { // sys_exit
         task_exit();
     } else if (r->rax == 4) { // sys_getpid
@@ -141,6 +144,15 @@ static void print_hex(uint64_t val) {
 }
 
 void isr_handler(registers_t* r) {
+    /* Software interrupts with a registered handler (e.g. the int 0x80
+     * syscall gate) are dispatched first and silently -- they are not faults,
+     * so they must not print the exception banner or touch CR2. */
+    if (interrupt_handlers[r->int_no] != 0) {
+        isr_t handler = interrupt_handlers[r->int_no];
+        handler(r);
+        return;
+    }
+
     uint64_t cr2;
     __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
 
@@ -153,12 +165,6 @@ void isr_handler(registers_t* r) {
     print_serial(" | CR2 (Fault Address): ");
     print_hex(cr2);
     print_serial("\n");
-
-    if (interrupt_handlers[r->int_no] != 0) {
-        isr_t handler = interrupt_handlers[r->int_no];
-        handler(r);
-        return;
-    }
 
     /* Fault isolation: if the fault happened inside a game's code, abort
      * only the game and unwind back to the desktop loop instead of

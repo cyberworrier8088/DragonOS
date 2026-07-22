@@ -1,8 +1,13 @@
 #include "scheduler.h"
 #include "gdt.h"
 #include "../mm/kheap.h"
+#include "../mm/paging.h"
 #include "../drivers/serial.h"
 #include "../libc/string.h"
+
+// Bytes of code, starting at the entry point's page, to expose to Ring 3.
+// The demo user routines are tiny and self-contained; 16KB is ample headroom.
+#define USER_CODE_MAP_SIZE 0x4000
 
 static task_t* task_list = 0;
 static task_t* current_task = 0;
@@ -91,6 +96,14 @@ task_t* create_user_task(void (*entry)(void), const char* name) {
     uint64_t kstack_top = new_task->kernel_stack + KERNEL_STACK_SIZE;
     uint64_t ustack_top = new_task->user_stack + USER_STACK_SIZE;
 
+    // Without this the first preemption into Ring 3 page-faults: the entry
+    // code and the user stack both live in supervisor-only kernel/HHDM pages.
+    // Mark them user-accessible so the CPU can fetch code and push to the
+    // stack at CPL 3. The kernel_stack stays supervisor-only (it backs the
+    // TSS RSP0 that interrupts land on, and must not be reachable from Ring 3).
+    paging_make_user((uint64_t)entry, USER_CODE_MAP_SIZE);
+    paging_make_user(new_task->user_stack, USER_STACK_SIZE);
+
     // Reserve registers_t on kernel stack
     registers_t* regs = (registers_t*)(kstack_top - sizeof(registers_t));
     memset(regs, 0, sizeof(registers_t));
@@ -128,13 +141,16 @@ registers_t* schedule(registers_t* regs) {
     // Save current task context
     current_task->rsp = (uint64_t)regs;
 
-    // Pick next ready task
+    // Pick the next non-zombie task. The list is circular, so bound the search
+    // by stopping if we come all the way back around -- otherwise a state where
+    // every other task (or even the current one) is a zombie would spin forever.
     task_t* next = current_task->next;
-    while (next && next->state == TASK_ZOMBIE) {
+    while (next != current_task && next->state == TASK_ZOMBIE) {
         next = next->next;
     }
 
-    if (!next || next == current_task) {
+    if (next == current_task || next->state == TASK_ZOMBIE) {
+        // Nothing else is runnable; stay on the current task.
         return regs;
     }
 
