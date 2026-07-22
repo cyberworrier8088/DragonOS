@@ -46,7 +46,6 @@ OBJS = boot.o \
        src/cpu/idt.o \
        src/cpu/scheduler.o \
        src/drivers/serial.o \
-       src/drivers/screen.o \
        src/drivers/graphics.o \
        src/drivers/mouse.o \
        src/drivers/timer.o \
@@ -66,7 +65,6 @@ OBJS = boot.o \
        src/fs/vfs.o \
        $(DOOM_OBJS) \
        $(QUAKE_OBJS) \
-       src/shell/shell.o \
        src/shell/gui.o \
        src/shell/minilua.o \
        src/shell/minitcc.o \

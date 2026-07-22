@@ -79,11 +79,18 @@ void draw_pixel_alpha(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha) {
     uint32_t g_dst = (dest >> 8) & 0xFF;
     uint32_t b_dst = dest & 0xFF;
     
-    // Optimize: Replace slow division (/ 255) with fast bitwise shift (>> 8)
+    // Exact divide-by-255 without a real division: (x + 1 + (x >> 8)) >> 8
+    // equals round(x / 255) for all x in [0, 255*255]. A plain >> 8 (divide by
+    // 256) is *not* equivalent -- it under-darkens every blend and, at
+    // alpha=255, fails to reproduce the source color at all (255 -> 254),
+    // which showed up as translucent overlays reading slightly too dark.
     uint32_t inv_alpha = 255 - alpha;
-    uint32_t r = (r_src * alpha + r_dst * inv_alpha) >> 8;
-    uint32_t g = (g_src * alpha + g_dst * inv_alpha) >> 8;
-    uint32_t b = (b_src * alpha + b_dst * inv_alpha) >> 8;
+    uint32_t r_mix = r_src * alpha + r_dst * inv_alpha;
+    uint32_t g_mix = g_src * alpha + g_dst * inv_alpha;
+    uint32_t b_mix = b_src * alpha + b_dst * inv_alpha;
+    uint32_t r = (r_mix + 1 + (r_mix >> 8)) >> 8;
+    uint32_t g = (g_mix + 1 + (g_mix >> 8)) >> 8;
+    uint32_t b = (b_mix + 1 + (b_mix >> 8)) >> 8;
     
     back_buffer[y * screen_width + x] = (r << 16) | (g << 8) | b;
 }

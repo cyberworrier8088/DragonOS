@@ -30,7 +30,12 @@ typedef struct {
 
 void init_vfs(void);
 void vfs_register_file(const char* name, void* buffer, uint32_t size);
-void vfs_create_file(const char* name, uint32_t size);
+int vfs_create_file(const char* name, uint32_t size); // 0 on success, -1 on failure
+
+// Feed one keystroke into the /dev/stdin ring buffer so read(0, ...) and any
+// getchar()-style consumer can actually receive keyboard input. Called from
+// the keyboard IRQ handler; safe to call before init_vfs() runs.
+void vfs_stdin_push(char c);
 
 // POSIX System Calls Emulation
 int open(const char* pathname, int flags);

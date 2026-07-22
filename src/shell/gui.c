@@ -4,7 +4,6 @@
 #include "../drivers/serial.h"
 #include "../cpu/ports.h"
 #include "../libc/string.h"
-#include "shell.h"
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
 #include "../drivers/pci.h"
@@ -1801,7 +1800,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
 
                     // Save
                     if (mx >= win->x + 10 && mx < win->x + 10 + btn_w && my >= btn_y && my < btn_y + btn_h) {
-                        extern void vfs_create_file(const char* name, uint32_t size);
                         vfs_create_file(editor_filename, EDITOR_BUF_SIZE);
                         int fd = open(editor_filename, 0);
                         if (fd >= 0) {
@@ -1859,7 +1857,6 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                     
                     // Check if New File button clicked
                     if (mx >= win->x + 8 && mx < win->x + 104 && my >= content_y + 180 && my < content_y + 202) {
-                        extern void vfs_create_file(const char* name, uint32_t size);
                         vfs_create_file("test.lua", 4096);
                         
                         // Populate with a default hello world script

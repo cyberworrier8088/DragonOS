@@ -5,9 +5,26 @@
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
 
+#define VFS_MAX_NODES 32
+
 file_desc_t fd_table[MAX_FD];
-static vfs_node_t vfs_nodes[32];
+static vfs_node_t vfs_nodes[VFS_MAX_NODES];
 static int vfs_node_count = 0;
+
+// /dev/stdin ring buffer, fed by the keyboard IRQ (see vfs_stdin_push) and
+// drained by read(0, ...). Power-of-two size lets index wraparound use a
+// simple mask instead of a modulo.
+#define STDIN_BUF_SIZE 256
+static char stdin_buf[STDIN_BUF_SIZE];
+static volatile uint32_t stdin_head = 0; // next slot to write (IRQ context)
+static volatile uint32_t stdin_tail = 0; // next slot to read (read() callers)
+
+void vfs_stdin_push(char c) {
+    uint32_t next = (stdin_head + 1) & (STDIN_BUF_SIZE - 1);
+    if (next == stdin_tail) return; // buffer full: drop the oldest-pending byte's slot
+    stdin_buf[stdin_head] = c;
+    stdin_head = next;
+}
 
 static int dev_null_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer);
 
@@ -20,7 +37,12 @@ static int dynamic_mem_read(vfs_node_t* node, uint32_t offset, uint32_t size, ui
 }
 
 void vfs_register_file(const char* name, void* buffer, uint32_t size) {
-    if (vfs_node_count >= 32) return;
+    if (vfs_node_count >= VFS_MAX_NODES) {
+        print_serial("[VFS] Warning: node table full, dropped file: ");
+        print_serial(name);
+        print_serial("\n");
+        return;
+    }
     vfs_node_t* node = &vfs_nodes[vfs_node_count++];
     strncpy(node->name, name, sizeof(node->name) - 1);
     node->name[sizeof(node->name) - 1] = '\0';
@@ -38,19 +60,40 @@ static int dynamic_mem_write(vfs_node_t* node, uint32_t offset, uint32_t size, c
     return to_write;
 }
 
-void vfs_create_file(const char* name, uint32_t size) {
-    if (vfs_node_count >= 32) return;
-    vfs_node_t* node = &vfs_nodes[vfs_node_count++];
+int vfs_create_file(const char* name, uint32_t size) {
+    // Idempotent by name: without this check, calling create on a file that
+    // already exists (e.g. the code editor's Save button, which calls this
+    // unconditionally every click) published a duplicate node every time --
+    // permanently leaking a kmalloc'd buffer and a node-table slot per save.
+    for (int i = 0; i < vfs_node_count; i++) {
+        if (strcmp(vfs_nodes[i].name, name) == 0) {
+            return 0;
+        }
+    }
+
+    if (vfs_node_count >= VFS_MAX_NODES) {
+        print_serial("[VFS] Warning: node table full, cannot create file: ");
+        print_serial(name);
+        print_serial("\n");
+        return -1;
+    }
+    vfs_node_t* node = &vfs_nodes[vfs_node_count];
     strncpy(node->name, name, sizeof(node->name) - 1);
     node->name[sizeof(node->name) - 1] = '\0';
     node->size = size;
     node->read = dynamic_mem_read;
     node->write = dynamic_mem_write;
     node->private_data = kmalloc(size);
-    // memset is handled by kmalloc now, but explicit memset doesn't hurt.
-    if (node->private_data) {
-        memset(node->private_data, 0, size);
+    if (!node->private_data) {
+        print_serial("[VFS] Warning: out of memory creating file: ");
+        print_serial(name);
+        print_serial("\n");
+        return -1; // Do not publish a node with no backing storage.
     }
+    // memset is handled by kmalloc now, but explicit memset doesn't hurt.
+    memset(node->private_data, 0, size);
+    vfs_node_count++;
+    return 0;
 }
 
 // Standard stream nodes
@@ -116,8 +159,12 @@ static int sys_meminfo_read(vfs_node_t* node, uint32_t node_offset, uint32_t siz
 
 static int dev_sda_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
     if (size == 0) return 0;
-    if (offset + size > (uint32_t)node->size) {
-        if (offset >= (uint32_t)node->size) return 0;
+    // Check offset against the limit FIRST: "offset + size > limit" can
+    // silently wrap around when offset is near UINT32_MAX (reachable via
+    // lseek() with an arbitrary offset), which would let a bogus offset
+    // through unclamped and hand the ATA layer a huge/garbage LBA.
+    if (offset >= (uint32_t)node->size) return 0;
+    if (size > (uint32_t)node->size - offset) {
         size = (uint32_t)node->size - offset;
     }
 
@@ -153,8 +200,10 @@ static int dev_sda_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_
 
 static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
     if (size == 0) return 0;
-    if (offset + size > (uint32_t)node->size) {
-        if (offset >= (uint32_t)node->size) return -1;
+    // Same overflow-safe ordering as dev_sda_read: check the offset bound
+    // before ever adding offset+size.
+    if (offset >= (uint32_t)node->size) return -1;
+    if (size > (uint32_t)node->size - offset) {
         size = (uint32_t)node->size - offset;
     }
 
@@ -262,8 +311,13 @@ int open(const char* pathname, int flags) {
 
     if (found_index == -1) {
         if (flags & O_CREAT) {
-            // Create a 64KB file in RAM by default (standard buffer size)
-            vfs_create_file(pathname, 64 * 1024);
+            // Create a 64KB file in RAM by default (standard buffer size).
+            // If creation fails (node table full or OOM), fall through to the
+            // "not found" path instead of silently opening whatever file
+            // happened to be last in the table.
+            if (vfs_create_file(pathname, 64 * 1024) != 0) {
+                return -1;
+            }
             found_index = vfs_node_count - 1;
         } else {
             return -1; // File not found
@@ -328,9 +382,16 @@ int read(int fd, void* buf, int count) {
     file_desc_t* f = &fd_table[fd];
     
     if (f->node == &stdin_node) {
-        // Simple polling keyboard read for standard input emulation
-        // Return 0 as non-blocking read
-        return 0;
+        // Non-blocking: drain whatever the keyboard IRQ has queued so far.
+        // stdin_head is written from IRQ context; re-reading it each
+        // iteration (rather than snapshotting once) is safe since we only
+        // ever compare it for equality against our own advancing tail.
+        int n = 0;
+        while (n < count && stdin_tail != stdin_head) {
+            ((char*)buf)[n++] = stdin_buf[stdin_tail];
+            stdin_tail = (stdin_tail + 1) & (STDIN_BUF_SIZE - 1);
+        }
+        return n;
     }
     
     if (!f->node->read) return -1;

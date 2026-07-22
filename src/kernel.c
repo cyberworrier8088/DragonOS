@@ -161,6 +161,10 @@ void kernel_main(void) {
         } else {
             print_serial("[DragonOS] Paging Test FAILED!\n");
         }
+        // This mapping was only a self-test; tear it down instead of leaving
+        // a permanent, otherwise-unused user-accessible scratch page mapped
+        // in production boots.
+        paging_unmap(0x1000000000ULL);
 
         scheduler_init();
         create_user_task(user_mode_task_1, "UserTask1");

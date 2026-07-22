@@ -1,8 +1,7 @@
 #include "keyboard.h"
 #include "../cpu/ports.h"
 #include "../cpu/idt.h"
-
-extern void shell_input_char(char c);
+#include "../fs/vfs.h"
 
 static int shift_pressed = 0;
 static int caps_lock = 0;
@@ -153,6 +152,7 @@ static void keyboard_callback(registers_t* regs) {
         if (ascii != 0) {
             extern void gui_handle_keyboard(char c);
             gui_handle_keyboard(ascii);
+            vfs_stdin_push(ascii); // feed POSIX read(0, ...) / getchar() consumers
         }
     }
     
