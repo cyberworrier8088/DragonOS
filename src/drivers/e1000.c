@@ -7,7 +7,7 @@
 #define E1000_TX_BUF_SIZE 2048
 
 static pci_device_t* e1000_device = 0;
-static uint32_t e1000_mmio_base = 0;
+static uint64_t e1000_mmio_base = 0; // VIRTUAL (HHDM) base of the NIC registers
 static uint8_t mac_addr[6];
 
 static struct e1000_rx_desc* rx_descs;
@@ -120,13 +120,18 @@ void e1000_init(void) {
     
     // Enable bus mastering
     pci_enable_bus_master(e1000_device);
-    
-    // Find MMIO bar
-    e1000_mmio_base = e1000_device->bar[0] & ~3; // Clear lower flags
-    if (!e1000_mmio_base) {
-        print_serial("[E1000] No MMIO base found in BAR0.\n");
+
+    // BAR0 holds a PHYSICAL memory-mapped register base (bit 0 = 0 for a memory
+    // BAR; the low 4 bits are flags). The kernel runs in the higher half with no
+    // identity map, so the registers are reachable only through the HHDM view of
+    // physical memory -- using the raw BAR value as a pointer faults instantly.
+    uint32_t bar0 = e1000_device->bar[0];
+    uint32_t mmio_phys = bar0 & 0xFFFFFFF0;
+    if ((bar0 & 0x1) || mmio_phys == 0) {
+        print_serial("[E1000] BAR0 is not a usable memory-mapped region.\n");
         return;
     }
+    e1000_mmio_base = (uint64_t)mmio_phys + pmm_hhdm_offset;
     
     print_serial("[E1000] Device found! Init MMIO...\n");
     
@@ -143,12 +148,17 @@ void e1000_init(void) {
     print_serial(mac_str);
     print_serial("\n");
     
-    // Enable interrupts
-    write_command(REG_IMS, 0x1F6DC); // Enable all standard E1000 interrupts
-    
+    // Keep NIC interrupts MASKED. There is no e1000 IRQ handler registered, so
+    // enabling them would let an unserviced, level-triggered interrupt latch on
+    // and fire forever -- an interrupt storm that hangs the machine. RX still
+    // fills descriptors via DMA and can be polled. (REG_IMC = interrupt mask
+    // clear; writing all-ones disables every interrupt source.)
+    write_command(REG_IMC, 0xFFFFFFFF);
+    read_command(REG_ICR); // clear any latched cause
+
     rx_init();
     tx_init();
-    
+
     print_serial("[E1000] Driver Initialization Complete.\n");
 }
 

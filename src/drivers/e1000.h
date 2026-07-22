@@ -15,6 +15,7 @@
 #define REG_CTRL_EXT 0x0018
 #define REG_ICR    0x00C0
 #define REG_IMS    0x00D0
+#define REG_IMC    0x00D8 // Interrupt Mask Clear
 
 #define REG_RCTL   0x0100
 #define REG_TCTL   0x0400
