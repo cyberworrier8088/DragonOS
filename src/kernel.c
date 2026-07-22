@@ -1,4 +1,6 @@
+#include "cpu/gdt.h"
 #include "cpu/idt.h"
+#include "cpu/scheduler.h"
 #include "drivers/serial.h"
 #include "drivers/timer.h"
 #include "drivers/keyboard.h"
@@ -13,6 +15,48 @@
 #include "libc/string.h"
 #include "libc/stdlib.h"
 #include "../limine-bin/limine.h"
+
+static void user_mode_task_1(void) {
+    const char* msg = "[UserTask 1] Hello from Ring 3 (User Mode)! Executing sys_print syscall...\n";
+    __asm__ volatile(
+        "mov $1, %%rax\n"
+        "mov %0, %%rbx\n"
+        "int $0x80\n"
+        : : "r"(msg) : "rax", "rbx"
+    );
+
+    for (;;) {
+        for (volatile int i = 0; i < 50000000; i++);
+        const char* tick_msg = "[UserTask 1] Ring 3 alive & preempted smoothly.\n";
+        __asm__ volatile(
+            "mov $1, %%rax\n"
+            "mov %0, %%rbx\n"
+            "int $0x80\n"
+            : : "r"(tick_msg) : "rax", "rbx"
+        );
+    }
+}
+
+static void user_mode_task_2(void) {
+    const char* msg = "[UserTask 2] Hello from Ring 3 (User Mode Task 2)!\n";
+    __asm__ volatile(
+        "mov $1, %%rax\n"
+        "mov %0, %%rbx\n"
+        "int $0x80\n"
+        : : "r"(msg) : "rax", "rbx"
+    );
+
+    for (;;) {
+        for (volatile int i = 0; i < 50000000; i++);
+        const char* tick_msg = "[UserTask 2] Ring 3 alive & preempted smoothly.\n";
+        __asm__ volatile(
+            "mov $1, %%rax\n"
+            "mov %0, %%rbx\n"
+            "int $0x80\n"
+            : : "r"(tick_msg) : "rax", "rbx"
+        );
+    }
+}
 
 // Set the base revision to 4
 __attribute__((used, section(".limine_requests")))
@@ -66,6 +110,9 @@ void kernel_main(void) {
     print_serial("[DragonOS] Booting 64-bit kernel under Limine Boot Protocol...\n");
     enable_sse();
 
+    /* Initialize GDT and TSS for Ring 0 & Ring 3 support */
+    gdt_init();
+
     /* Initialize CPU IDT */
     idt_init();
     print_serial("[DragonOS] 64-bit IDT loaded.\n");
@@ -106,6 +153,10 @@ void kernel_main(void) {
         kheap_init();
         print_serial("[DragonOS] Physical Memory Manager and Kernel Heap initialized.\n");
         
+        scheduler_init();
+        create_user_task(user_mode_task_1, "UserTask1");
+        create_user_task(user_mode_task_2, "UserTask2");
+
         init_paging();
         // Test Paging by mapping 0x1000000000 -> 0x1000000 physical
         paging_map(0x1000000000ULL, 0x1000000ULL, PAGE_PRESENT | PAGE_WRITE | PAGE_USER);

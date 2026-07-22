@@ -36,5 +36,6 @@ typedef void (*isr_t)(registers_t*);
 
 void idt_init(void);
 void register_interrupt_handler(uint8_t n, isr_t handler);
+registers_t* irq_handler(registers_t* r);
 
 #endif

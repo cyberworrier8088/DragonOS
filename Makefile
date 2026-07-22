@@ -42,7 +42,9 @@ QUAKE_OBJS = $(QUAKE_SRCS:.c=.o)
 OBJS = boot.o \
        src/cpu/interrupt.o \
        src/cpu/ports.o \
+       src/cpu/gdt.o \
        src/cpu/idt.o \
+       src/cpu/scheduler.o \
        src/drivers/serial.o \
        src/drivers/screen.o \
        src/drivers/graphics.o \

@@ -85,7 +85,7 @@ irq_common_stub:
     call irq_handler
 
     fxrstor [rsp]
-    mov rsp, rbx
+    mov rsp, rax    ; Switch stack pointer to target task registers_t* frame
 
     pop r15
     pop r14
@@ -119,6 +119,9 @@ irq_common_stub:
     push qword %1
     jmp isr_common_stub
 %endmacro
+
+ISR_NOERRCODE 128
+
 
 %macro IRQ 2
   global irq%1
