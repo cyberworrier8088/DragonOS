@@ -20,19 +20,26 @@ isr_t       interrupt_handlers[256];
 
 extern void isr128(void);
 
-static void syscall_handler(registers_t* r) {
-    if (r->rax == 1) { // sys_print
-        print_serial((const char*)r->rbx);
-    } else if (r->rax == 2) { // sys_yield
-        // Cooperative hint only. int 0x80 enters through the ISR stub, which
-        // does not perform a task switch on return, so calling schedule() here
-        // would desync current_task from the frame actually resumed. The 100Hz
-        // timer preempts this task shortly anyway.
-    } else if (r->rax == 3) { // sys_exit
-        task_exit();
-    } else if (r->rax == 4) { // sys_getpid
-        task_t* cur = get_current_task();
-        r->rax = cur ? cur->pid : 0;
+// Handle an int 0x80 system call. Returns the register frame to resume on --
+// normally the caller's own frame, but sys_yield/sys_exit return a *different*
+// task's frame so the ISR stub switches to it via `mov rsp, rax`.
+static registers_t* syscall_dispatch(registers_t* r) {
+    switch (r->rax) {
+        case 1: // sys_print(rbx = message)
+            print_serial((const char*)r->rbx);
+            return r;
+        case 2: // sys_yield -- hand the CPU to the next runnable task right now
+            return schedule(r);
+        case 3: // sys_exit -- retire this task, then switch away for good
+            task_exit();
+            return schedule(r);
+        case 4: { // sys_getpid
+            task_t* cur = get_current_task();
+            r->rax = cur ? cur->pid : 0;
+            return r;
+        }
+        default:
+            return r;
     }
 }
 
@@ -65,9 +72,10 @@ void idt_init(void) {
     outb(0x21, 0x0);  // Unmask all hardware interrupts
     outb(0xA1, 0x0);
 
-    /* Software Syscall Interrupt (0x80 = Vector 128, DPL=3 for User Mode access) */
+    /* Software Syscall Interrupt (0x80 = Vector 128, DPL=3 for User Mode access).
+     * Dispatched directly by isr_handler (not via the generic handler table) so
+     * it can return a switched-to task frame for sys_yield/sys_exit. */
     idt_set_gate(128, (uint64_t)isr128, 0x08, 0xEE);
-    register_interrupt_handler(128, syscall_handler);
 
     /* CPU Exceptions */
     extern void isr0();  extern void isr1();  extern void isr2();  extern void isr3();
@@ -143,18 +151,38 @@ static void print_hex(uint64_t val) {
     print_serial(&buf[i+1]);
 }
 
-void isr_handler(registers_t* r) {
-    /* Software interrupts with a registered handler (e.g. the int 0x80
-     * syscall gate) are dispatched first and silently -- they are not faults,
-     * so they must not print the exception banner or touch CR2. */
+registers_t* isr_handler(registers_t* r) {
+    /* System calls are not faults: dispatch them silently and return whichever
+     * frame should resume (sys_yield/sys_exit hand back a different task). */
+    if (r->int_no == 128) {
+        return syscall_dispatch(r);
+    }
+
+    /* Any other vector with a registered handler is also handled silently. */
     if (interrupt_handlers[r->int_no] != 0) {
         isr_t handler = interrupt_handlers[r->int_no];
         handler(r);
-        return;
+        return r;
     }
 
     uint64_t cr2;
     __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+
+    /* Ring 3 fault containment: a fault that happened at CPL 3 (a buggy user
+     * task) must never take down the kernel. Log it, retire that task, and
+     * schedule another -- the desktop keeps running. Kernel-mode faults
+     * (CPL 0) fall through to the diagnostics + BSOD below. */
+    if ((r->cs & 3) == 3) {
+        print_serial("[Kernel] Ring 3 task fault (vector ");
+        print_hex(r->int_no);
+        print_serial(", RIP ");
+        print_hex(r->rip);
+        print_serial(", CR2 ");
+        print_hex(cr2);
+        print_serial(") -- terminating task.\n");
+        task_exit();
+        return schedule(r);
+    }
 
     print_serial("Exception received! Vector: ");
     print_hex(r->int_no);
@@ -185,7 +213,8 @@ void isr_handler(registers_t* r) {
 
     print_serial("Unhandled CPU Exception! System Halted.\n");
     gui_bsod(r, cr2);
-    __asm__ volatile("cli; hlt");
+    for (;;) __asm__ volatile("cli; hlt");
+    return r; // unreachable; satisfies the non-void return type
 }
 
 registers_t* irq_handler(registers_t* r) {

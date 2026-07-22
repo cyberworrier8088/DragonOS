@@ -38,7 +38,7 @@ isr_common_stub:
     call isr_handler
 
     fxrstor [rsp]
-    mov rsp, rbx
+    mov rsp, rax    ; isr_handler returns the frame to resume (may be a new task)
 
     pop r15
     pop r14

@@ -162,6 +162,10 @@ registers_t* schedule(registers_t* regs) {
     return (registers_t*)current_task->rsp;
 }
 
+// Retire the current task. The caller (the int 0x80 syscall path) immediately
+// calls schedule() afterwards, which switches to another task and never
+// resumes this one -- so we must NOT hlt here. Spinning on hlt with interrupts
+// disabled (the syscall gate clears IF) would hang the whole machine.
 void task_exit(void) {
     if (current_task) {
         print_serial("[DragonOS] Task Exiting: ");
@@ -169,11 +173,8 @@ void task_exit(void) {
         print_serial("\n");
         current_task->state = TASK_ZOMBIE;
     }
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
 }
 
 void task_yield(void) {
-    __asm__ volatile("int $32"); // Trigger IRQ0 timer vector manually
+    __asm__ volatile("int $0x80" :: "a"(2) : "memory"); // sys_yield
 }
