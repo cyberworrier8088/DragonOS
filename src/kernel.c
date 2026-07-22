@@ -17,7 +17,7 @@
 #include "../limine-bin/limine.h"
 
 static void user_mode_task_1(void) {
-    const char* msg = "[UserTask 1] Hello from Ring 3 (User Mode)! Executing sys_print syscall...\n";
+    const char* msg = "[UserTask 1] Ring 3 User Mode initialized and active.\n";
     __asm__ volatile(
         "mov $1, %%rax\n"
         "mov %0, %%rbx\n"
@@ -26,19 +26,17 @@ static void user_mode_task_1(void) {
     );
 
     for (;;) {
-        for (volatile int i = 0; i < 50000000; i++);
-        const char* tick_msg = "[UserTask 1] Ring 3 alive & preempted smoothly.\n";
+        // Yield CPU to keep desktop GUI silky smooth at 60+ FPS
         __asm__ volatile(
-            "mov $1, %%rax\n"
-            "mov %0, %%rbx\n"
+            "mov $2, %%rax\n"
             "int $0x80\n"
-            : : "r"(tick_msg) : "rax", "rbx"
+            : : : "rax"
         );
     }
 }
 
 static void user_mode_task_2(void) {
-    const char* msg = "[UserTask 2] Hello from Ring 3 (User Mode Task 2)!\n";
+    const char* msg = "[UserTask 2] Ring 3 User Mode initialized and active.\n";
     __asm__ volatile(
         "mov $1, %%rax\n"
         "mov %0, %%rbx\n"
@@ -47,13 +45,11 @@ static void user_mode_task_2(void) {
     );
 
     for (;;) {
-        for (volatile int i = 0; i < 50000000; i++);
-        const char* tick_msg = "[UserTask 2] Ring 3 alive & preempted smoothly.\n";
+        // Yield CPU to keep desktop GUI silky smooth at 60+ FPS
         __asm__ volatile(
-            "mov $1, %%rax\n"
-            "mov %0, %%rbx\n"
+            "mov $2, %%rax\n"
             "int $0x80\n"
-            : : "r"(tick_msg) : "rax", "rbx"
+            : : : "rax"
         );
     }
 }
@@ -277,15 +273,8 @@ void kernel_main(void) {
         gui_handle_mouse(mouse_x, mouse_y, mouse_l_click, mouse_r_click);
         gui_draw();
 
-        extern void sleep_ms(uint32_t ms);
-        if (doom_running || quake_running) {
-            /* While a game runs, just yield until the next hardware
-             * interrupt (<=10ms). A fixed 16ms sleep on top of the game's
-             * own frame cost made input feel frozen. */
-            __asm__ volatile("hlt");
-        } else {
-            /* Idle desktop: cap at ~60 FPS to keep host CPU usage low. */
-            sleep_ms(16);
-        }
+        /* Yield CPU until next hardware interrupt (mouse, keyboard, or timer)
+         * for instant zero-lag input response and minimum CPU utilization. */
+        __asm__ volatile("hlt");
     }
 }
