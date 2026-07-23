@@ -33,6 +33,16 @@ void pci_enable_bus_master(pci_device_t* device) {
     pci_write_config_dword(device->bus, device->slot, device->func, 0x04, reg4);
 }
 
+// Append `digits` hex nibbles of `val` (most significant first) to `buf`.
+static void append_hex(char* buf, uint32_t val, int digits) {
+    const char* hex_chars = "0123456789ABCDEF";
+    int len = strlen(buf);
+    for (int i = digits - 1; i >= 0; i--) {
+        buf[len++] = hex_chars[(val >> (i * 4)) & 0xF];
+    }
+    buf[len] = '\0';
+}
+
 const char* pci_get_class_name(uint8_t class_code) {
     switch (class_code) {
         case 0x00: return "Unclassified";
@@ -102,29 +112,20 @@ void pci_check_device(uint8_t bus, uint8_t slot) {
         pci_devices_head = device;
         pci_device_count++;
 
-        // Print debug information to serial logs
+        // Print debug information to serial logs. Vendor/device IDs are
+        // conventionally written in hex (e.g. 8086:100E is instantly
+        // recognizable as Intel; the previous decimal output wasn't).
         char log_buf[128];
-        char num_buf[32];
         strcpy(log_buf, "[PCI] Scanned: ");
         strcat(log_buf, device->class_name);
-        strcat(log_buf, " (Ven: ");
-        int_to_ascii(ven, num_buf); // Hex representation would be better, but decimal works for debugging
-        strcat(log_buf, num_buf);
-        strcat(log_buf, " Dev: ");
-        int_to_ascii(dev, num_buf);
-        strcat(log_buf, num_buf);
+        strcat(log_buf, " (Ven: 0x");
+        append_hex(log_buf, ven, 4);
+        strcat(log_buf, " Dev: 0x");
+        append_hex(log_buf, dev, 4);
         strcat(log_buf, ") BAR0: 0x");
-        
-        // Simple hex print for BAR0
-        uint32_t b0 = device->bar[0];
-        const char* hex_chars = "0123456789ABCDEF";
-        for (int i = 7; i >= 0; i--) {
-            int nibble = (b0 >> (i * 4)) & 0xF;
-            char nstr[2] = {hex_chars[nibble], '\0'};
-            strcat(log_buf, nstr);
-        }
+        append_hex(log_buf, device->bar[0], 8);
         strcat(log_buf, "\n");
-        
+
         print_serial(log_buf);
     }
 }
