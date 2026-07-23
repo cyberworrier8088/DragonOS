@@ -71,7 +71,7 @@ OBJS = boot.o \
        src/2048/2048.o \
        kernel.o
 
-.PHONY: all clean verify run run-curses run-nographic
+.PHONY: all clean verify run run-curses run-nographic run-legacy
 
 all: dragonos.iso
 
@@ -156,11 +156,14 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad i
 		-o $@ isodir
 	./limine-bin/limine bios-install $@
 
-# -accel kvm -accel tcg: try real hardware virtualization (VT-x/AMD-V) first
-# and only fall back to slow software emulation (TCG) if KVM isn't usable --
-# QEMU tries each in order and silently continues past a KVM init failure. This
-# is the single biggest speed/smoothness lever available: KVM runs guest code
-# directly on the CPU instead of interpreting it instruction-by-instruction.
+# -accel kvm -accel tcg,thread=multi: try real hardware virtualization
+# (VT-x/AMD-V) first and only fall back to software emulation (TCG) if KVM
+# isn't usable -- QEMU tries each in order and silently continues past a KVM
+# init failure. This is the single biggest speed/smoothness lever available:
+# KVM runs guest code directly on the CPU instead of interpreting it
+# instruction-by-instruction. thread=multi runs the vCPU on its own thread
+# separate from QEMU's main/IO thread even in the TCG fallback case, which
+# keeps display/input responsive instead of sharing one thread with emulation.
 # -cpu max: exposes the largest feature set the chosen accelerator supports;
 # unlike -cpu host, it works correctly under both KVM and TCG.
 #
@@ -170,7 +173,25 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad i
 #   sudo usermod -aG kvm $USER
 # then fully restart the WSL VM (`wsl --shutdown` from Windows, not just
 # closing the terminal) so the new group membership takes effect.
-QEMU_ACCEL = -accel kvm -accel tcg -cpu max
+QEMU_ACCEL = -accel kvm -accel tcg,thread=multi -cpu max
+
+# -M q35: QEMU's modern ICH9/PCIe chipset (vs. the legacy i440fx/PIIX "pc"
+# machine) -- a real PCIe root complex instead of a flat conventional-PCI bus,
+# and QEMU's actively-developed default going forward. Verified by booting
+# DragonOS under it (headless serial log + a QEMU monitor screendump): PS/2
+# keyboard/mouse, PIT timer, RTC, the PCI config-space scan, paging, the
+# scheduler and Ring 3 tasks, and the GUI desktop all come up identically to
+# the old "pc" machine -- none of that is chipset-specific in this kernel.
+# -nic model=e1000: q35's implicit default NIC model differs from i440fx's
+# (0x10D3 vs the 0x100E the e1000 driver matches on), so pin the model
+# explicitly rather than rely on a per-machine-type default that can also
+# change across QEMU versions.
+# ATA/disk is unaffected either way: there is no -drive hard disk attached in
+# any of these targets (only the -cdrom boot image), so the primary-master
+# IDENTIFY was already failing under the old "pc" machine too -- q35 just
+# reports it with a different message ("Drive identify error" vs "No primary
+# master drive found"), not a new regression.
+QEMU_MACHINE = -M q35 -nic model=e1000
 
 run: dragonos.iso
 	# GDK_BACKEND=x11: under WSLg (and some other Wayland compositors), QEMU's
@@ -180,13 +201,19 @@ run: dragonos.iso
 	# itself is running fine -- it just looks frozen. Forcing GTK onto X11 (via
 	# XWayland, present wherever GTK is) is the standard fix and is a no-op on
 	# setups that don't hit this bug.
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_ACCEL)
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_MACHINE) $(QEMU_ACCEL)
 
 run-curses: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_ACCEL)
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_MACHINE) $(QEMU_ACCEL)
 
 run-nographic: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_ACCEL)
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_MACHINE) $(QEMU_ACCEL)
+
+# Fallback to the classic i440fx/PIIX "pc" machine and the original e1000
+# PCI ID QEMU picks for it, in case q35 ever needs to be ruled out on a
+# specific host.
+run-legacy: dragonos.iso
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_ACCEL)
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir
