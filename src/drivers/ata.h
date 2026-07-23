@@ -28,4 +28,10 @@ void ata_init(void);
 int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
 int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer);
 
+// Real capacity/presence, populated by ata_init() from the drive's IDENTIFY
+// data. Lets callers (the VFS /dev/sda node) size themselves to the actual
+// attached disk instead of assuming a fixed mock size.
+int ata_disk_present(void);
+uint32_t ata_get_sector_count(void); // 0 if no drive was detected
+
 #endif

@@ -2,6 +2,17 @@
 #include "../cpu/ports.h"
 #include "serial.h"
 
+static int drive_present = 0;
+static uint32_t total_sectors = 0;
+
+int ata_disk_present(void) {
+    return drive_present;
+}
+
+uint32_t ata_get_sector_count(void) {
+    return total_sectors;
+}
+
 static void ata_wait_400ns(void) {
     inb(ATA_PRIMARY_STATUS);
     inb(ATA_PRIMARY_STATUS);
@@ -61,13 +72,19 @@ void ata_init(void) {
         model_string[i * 2 + 1] = (char)(w & 0xFF);
     }
     model_string[40] = '\0';
-    
+
     // Trim trailing spaces
     for (int i = 39; i >= 0; i--) {
         if (model_string[i] == ' ') model_string[i] = '\0';
         else break;
     }
-    
+
+    // Words 60-61: total addressable LBA28 sectors (word 60 = low 16 bits,
+    // word 61 = high 16 bits). Lets callers size /dev/sda to the real disk
+    // instead of a hardcoded guess.
+    total_sectors = (uint32_t)identify_data[60] | ((uint32_t)identify_data[61] << 16);
+    drive_present = 1;
+
     print_serial("[ATA] Primary master drive detected successfully.\n");
     print_serial("[ATA] Drive Model: ");
     print_serial(model_string);
@@ -75,6 +92,8 @@ void ata_init(void) {
 }
 
 int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer) {
+    if (!drive_present) return -1; // fail fast instead of timing out on empty ports
+
     outb(ATA_PRIMARY_DRIVE, 0xE0 | ((lba >> 24) & 0x0F));
     outb(ATA_PRIMARY_SECCOUNT, count);
     outb(ATA_PRIMARY_LBA_LO, (uint8_t)lba);
@@ -103,6 +122,8 @@ int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer) {
 }
 
 int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer) {
+    if (!drive_present) return -1; // fail fast instead of timing out on empty ports
+
     outb(ATA_PRIMARY_DRIVE, 0xE0 | ((lba >> 24) & 0x0F));
     outb(ATA_PRIMARY_SECCOUNT, count);
     outb(ATA_PRIMARY_LBA_LO, (uint8_t)lba);

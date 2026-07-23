@@ -186,14 +186,24 @@ QEMU_ACCEL = -accel kvm -accel tcg,thread=multi -cpu max
 # (0x10D3 vs the 0x100E the e1000 driver matches on), so pin the model
 # explicitly rather than rely on a per-machine-type default that can also
 # change across QEMU versions.
-# ATA/disk is unaffected either way: there is no -drive hard disk attached in
-# any of these targets (only the -cdrom boot image), so the primary-master
-# IDENTIFY was already failing under the old "pc" machine too -- q35 just
-# reports it with a different message ("Drive identify error" vs "No primary
-# master drive found"), not a new regression.
 QEMU_MACHINE = -M q35 -nic model=e1000
 
-run: dragonos.iso
+# Real persistent disk: a 64MB raw image backing /dev/sda through the ATA
+# driver's fixed legacy ports (0x1F0-0x1F7), which is all it speaks -- no
+# AHCI/virtio support in-guest. This rule only fires if disk.img doesn't
+# already exist, so a rebuild (or `make clean`) never wipes what's stored on
+# it; deleting it yourself is the only way to reset it.
+disk.img:
+	qemu-img create -f raw disk.img 64M
+
+# q35 has no legacy IDE controller by default (only AHCI), so one is added
+# explicitly here, wired to the exact fixed ports the ATA driver expects.
+# The classic i440fx "pc" machine (used by run-legacy below) already includes
+# that controller built in and does not need this.
+QEMU_IDE_CTRL = -device piix3-ide,id=ide
+QEMU_DISK = -drive if=none,id=hd0,format=raw,file=disk.img -device ide-hd,drive=hd0,bus=ide.0,unit=0
+
+run: dragonos.iso disk.img
 	# GDK_BACKEND=x11: under WSLg (and some other Wayland compositors), QEMU's
 	# GTK display fails to get a valid input "seat" over native Wayland
 	# (Gdk-CRITICAL/gdk_seat_get_keyboard warnings spam stderr), which leaves
@@ -201,19 +211,19 @@ run: dragonos.iso
 	# itself is running fine -- it just looks frozen. Forcing GTK onto X11 (via
 	# XWayland, present wherever GTK is) is the standard fix and is a no-op on
 	# setups that don't hit this bug.
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_MACHINE) $(QEMU_ACCEL)
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
 
-run-curses: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_MACHINE) $(QEMU_ACCEL)
+run-curses: dragonos.iso disk.img
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
 
-run-nographic: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_MACHINE) $(QEMU_ACCEL)
+run-nographic: dragonos.iso disk.img
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
 
 # Fallback to the classic i440fx/PIIX "pc" machine and the original e1000
 # PCI ID QEMU picks for it, in case q35 ever needs to be ruled out on a
-# specific host.
-run-legacy: dragonos.iso
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_ACCEL)
+# specific host. Its built-in IDE controller picks up the same disk.img.
+run-legacy: dragonos.iso disk.img
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_DISK) $(QEMU_ACCEL)
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir

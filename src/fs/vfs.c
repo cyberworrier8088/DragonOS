@@ -1,6 +1,7 @@
 #include "vfs.h"
 #include "../libc/string.h"
 #include "../drivers/serial.h"
+#include "../drivers/ata.h"
 #include "../shell/gui.h"
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
@@ -183,7 +184,6 @@ static int dev_sda_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_
         void* temp = kmalloc(count * 512);
         if (!temp) return bytes_read > 0 ? (int)bytes_read : -1;
 
-        extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
         if (ata_read_sectors(lba, (uint8_t)count, (uint32_t*)temp) < 0) {
             kfree(temp);
             return bytes_read > 0 ? (int)bytes_read : -1;
@@ -222,7 +222,6 @@ static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const
         void* temp = kmalloc(count * 512);
         if (!temp) return bytes_written > 0 ? (int)bytes_written : -1;
 
-        extern int ata_read_sectors(uint32_t lba, uint8_t count, uint32_t* buffer);
         if ((chunk_offset % 512 != 0) || (chunk_size < count * 512)) {
             if (ata_read_sectors(lba, (uint8_t)count, (uint32_t*)temp) < 0) {
                 kfree(temp);
@@ -233,7 +232,6 @@ static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const
         uint32_t off_in_sector = chunk_offset % 512;
         memcpy((uint8_t*)temp + off_in_sector, buffer + bytes_written, chunk_size);
 
-        extern int ata_write_sectors(uint32_t lba, uint8_t count, const uint32_t* buffer);
         if (ata_write_sectors(lba, (uint8_t)count, (const uint32_t*)temp) < 0) {
             kfree(temp);
             return bytes_written > 0 ? (int)bytes_written : -1;
@@ -281,12 +279,19 @@ void init_vfs(void) {
     sys_meminfo->read = sys_meminfo_read;
     sys_meminfo->write = dev_null_write;
 
-    vfs_node_t* dev_sda = &vfs_nodes[vfs_node_count++];
-    strcpy(dev_sda->name, "/dev/sda");
-    dev_sda->read = dev_sda_read;
-    dev_sda->write = dev_sda_write;
-    dev_sda->size = 100 * 1024 * 1024; // Mock disk size (100MB)
-    
+    // Only publish /dev/sda if ata_init() actually found a real drive.
+    // Previously this always claimed a 100MB mock size regardless of whether
+    // a disk was attached, so reads/writes past whatever was really backing
+    // it (or past nothing at all) would issue bogus ATA commands instead of
+    // cleanly failing at the VFS layer.
+    if (ata_disk_present()) {
+        vfs_node_t* dev_sda = &vfs_nodes[vfs_node_count++];
+        strcpy(dev_sda->name, "/dev/sda");
+        dev_sda->read = dev_sda_read;
+        dev_sda->write = dev_sda_write;
+        dev_sda->size = (int)(ata_get_sector_count() * 512ULL);
+    }
+
     print_serial("[DragonOS] POSIX Virtual File System initialized.\n");
 }
 

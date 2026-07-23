@@ -238,6 +238,38 @@ void kernel_main(void) {
         print_serial("[DragonOS] POSIX VFS Test FAILED: Could not open /sys/meminfo\n");
     }
 
+    // Verify real persistent storage: read+increment a boot counter stored on
+    // /dev/sda itself. When /dev/sda is backed by a real disk image file (see
+    // the Makefile's QEMU_DISK), this number keeps climbing across separate
+    // `make run` invocations -- proof the write reached actual persistent
+    // storage, not just this session's RAM.
+    int sda_fd = open("/dev/sda", O_RDWR);
+    if (sda_fd >= 0) {
+        struct { uint32_t magic; uint32_t boot_count; } persist;
+        int bytes = read(sda_fd, &persist, sizeof(persist));
+
+        uint32_t boot_count;
+        if (bytes == (int)sizeof(persist) && persist.magic == 0x44524147) { // 'DRAG'
+            boot_count = persist.boot_count + 1;
+        } else {
+            boot_count = 1; // first boot, or an unrecognized/blank disk
+        }
+
+        persist.magic = 0x44524147;
+        persist.boot_count = boot_count;
+        lseek(sda_fd, 0, 0); // rewind to overwrite the header we just read
+        write(sda_fd, &persist, sizeof(persist));
+        close(sda_fd);
+
+        char count_str[16];
+        int_to_ascii((int)boot_count, count_str);
+        print_serial("[DragonOS] Persistent Disk Test: boot count = ");
+        print_serial(count_str);
+        print_serial(" (stored on /dev/sda -- increments across real reboots)\n");
+    } else {
+        print_serial("[DragonOS] Persistent Disk Test: /dev/sda not available (no disk image attached).\n");
+    }
+
     /* Initialize Window Manager GUI */
     init_gui();
     extern void init_2048(void);
