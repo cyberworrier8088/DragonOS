@@ -79,6 +79,26 @@ static int op2 = 0;
 static char calc_op = 0;
 static int calc_new_number = 1;
 
+// Parse the calculator's displayed number back into an int. calc_buf is
+// populated from int_to_ascii() after "=", which emits a leading '-' for
+// negative results -- the old inline version of this loop didn't special-case
+// it, so '-' fell into (calc_buf[s] - '0') as if it were a digit (a value of
+// -3), corrupting every calculation chained after a negative result (e.g.
+// 5-9= displays -4 correctly, but the next operator read it back as -26).
+static int parse_calc_buf(void) {
+    int i = 0;
+    int neg = 0;
+    if (calc_buf[0] == '-') {
+        neg = 1;
+        i = 1;
+    }
+    int val = 0;
+    for (; calc_buf[i] != '\0'; i++) {
+        val = val * 10 + (calc_buf[i] - '0');
+    }
+    return neg ? -val : val;
+}
+
 /* Code Editor Window State */
 #define EDITOR_BUF_SIZE 16384
 static char editor_buf[EDITOR_BUF_SIZE] = "";
@@ -397,6 +417,15 @@ static void gui_execute_command(const char* cmd) {
 void init_gui(void) {
     /* Dynamically allocate windows using KHeap */
     windows = (gui_window_t*)kmalloc(sizeof(gui_window_t) * MAX_WINDOWS);
+    if (!windows) {
+        // Every write below assumes `windows` is valid; without this check a
+        // failed allocation here (heap exhaustion) would be an immediate
+        // NULL-pointer write. The GUI is this OS's only user-facing surface,
+        // so there's nothing useful to degrade to -- halt with a clear
+        // diagnostic instead of silently corrupting memory at address 0.
+        print_serial("[GUI] Fatal: failed to allocate window array!\n");
+        for (;;) { __asm__ volatile("cli; hlt"); }
+    }
 
     /* 0: Computer */
     windows[0].x = 80;
@@ -1186,7 +1215,14 @@ void gui_draw_editor(int x, int y, int w, int h) {
                         const char* keywords[] = {"int", "void", "return", "if", "else", "while", "for", "char", "static", "extern", "local", "function", "end", NULL};
                         for (int k = 0; keywords[k]; k++) {
                             int len = strlen(keywords[k]);
-                            if (strncmp(&editor_buf[i], keywords[k], len) == 0 && !is_alpha(editor_buf[i+len]) && (editor_buf[i+len] < '0' || editor_buf[i+len] > '9')) {
+                            // Bounds-check i+len before dereferencing: near the tail of a
+                            // maximally-full editor_buf (EDITOR_BUF_SIZE bytes), i+len can
+                            // walk past the end of the array for the longest keyword
+                            // ("function", 8 chars) -- an out-of-bounds read. Treat an
+                            // out-of-range "next character" as the buffer's implicit
+                            // terminator, which is never alpha/digit, same as a real '\0'.
+                            char next = (i + len < EDITOR_BUF_SIZE) ? editor_buf[i + len] : '\0';
+                            if (strncmp(&editor_buf[i], keywords[k], len) == 0 && !is_alpha(next) && (next < '0' || next > '9')) {
                                 keyword_countdown = len;
                                 break;
                             }
@@ -1782,10 +1818,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     op1 = 0; op2 = 0; calc_op = 0;
                                     calc_new_number = 1;
                                 } else if (key == '=') {
-                                    int temp_val = 0;
-                                    for (int s = 0; calc_buf[s] != '\0'; s++)
-                                        temp_val = temp_val * 10 + (calc_buf[s] - '0');
-                                    op2 = temp_val;
+                                    op2 = parse_calc_buf();
                                     int res = 0;
                                     if (calc_op == '+') res = op1 + op2;
                                     else if (calc_op == '-') res = op1 - op2;
@@ -1796,10 +1829,7 @@ void gui_handle_mouse(int mx, int my, int click, int r_click) {
                                     calc_new_number = 1;
                                     calc_op = 0;
                                 } else {
-                                    int temp_val = 0;
-                                    for (int s = 0; calc_buf[s] != '\0'; s++)
-                                        temp_val = temp_val * 10 + (calc_buf[s] - '0');
-                                    op1 = temp_val;
+                                    op1 = parse_calc_buf();
                                     calc_op = key;
                                     calc_new_number = 1;
                                 }
@@ -2048,6 +2078,11 @@ void gui_handle_keyboard(char c) {
 void gui_close_quake(void) {
     if (windows) windows[7].closed = 1;
     if (active_win_id == 7) active_win_id = -1;
+    // Without this, quitting Quake while the mouse button is still held down
+    // leaves the desktop's click-debounce latch set, so the first click back
+    // on the desktop is silently swallowed until the button is released and
+    // pressed again. gui_close_doom() (right below) already does this.
+    gui_was_clicked = 0;
 }
 
 void gui_close_doom(void) {
