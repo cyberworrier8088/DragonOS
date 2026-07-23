@@ -3,6 +3,7 @@
 #include "../libc/string.h"
 #include "../drivers/serial.h"
 #include "../mm/kheap.h"
+#include <errno.h>
 
 FILE* fopen(const char* filename, const char* mode) {
     (void)mode;
@@ -490,8 +491,23 @@ FILE* freopen(const char* filename, const char* mode, FILE* stream) {
 }
 
 char* strerror(int errnum) {
-    (void)errnum;
-    return "Unknown error";
+    // Previously always "Unknown error" regardless of errnum, which made
+    // every strerror(errno) call site (e.g. Quake's file-open error path in
+    // sys_null.c) useless as a diagnostic. errno itself was already wired to
+    // __errno_location() via the system's errno.h, but nothing in the VFS
+    // layer ever actually set it to anything meaningful until now.
+    switch (errnum) {
+        case ENOENT: return "No such file or directory";
+        case EBADF:  return "Bad file descriptor";
+        case ENOMEM: return "Out of memory";
+        case EMFILE: return "Too many open files";
+        case EINVAL: return "Invalid argument";
+        case EFAULT: return "Bad address";
+        case ENOSPC: return "No space left on device";
+        case EEXIST: return "File exists";
+        case 0:      return "Success";
+        default:     return "Unknown error";
+    }
 }
 
 int __isoc99_fscanf(FILE* stream, const char* format, ...) {

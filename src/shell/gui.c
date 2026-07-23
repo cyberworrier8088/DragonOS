@@ -257,7 +257,11 @@ static void gui_execute_command(const char* cmd) {
                 gui_write_string(node->name);
                 gui_write_string(" (");
                 char size_str[32];
-                int_to_ascii(node->size, size_str);
+                // node->length is the actual content length; node->size is
+                // just the allocated capacity (e.g. every file created via
+                // `touch`/O_CREAT gets a 64KB capacity regardless of how much
+                // is ever written to it).
+                int_to_ascii(node->length, size_str);
                 gui_write_string(size_str);
                 gui_write_string(" B)\n");
             }
@@ -1041,7 +1045,7 @@ static void draw_window_content(gui_window_t* win) {
             /* File Size */
             char size_str[32];
             char num_buf[16];
-            int_to_ascii(node->size, num_buf);
+            int_to_ascii(node->length, num_buf); // actual content, not allocated capacity
             strcpy(size_str, num_buf);
             strcat(size_str, " B");
             draw_string(x + 350, ry + 1, size_str, 0x888888);

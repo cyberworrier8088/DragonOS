@@ -5,6 +5,20 @@
 #include "../shell/gui.h"
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
+#include <errno.h>
+
+// File-type bits for st_mode (standard POSIX values: S_IFREG=0100000,
+// S_IFCHR=0020000, S_IFBLK=0060000), permission bits kept permissive since
+// this OS has no user/permission model.
+#define VFS_MODE_REG  0100666
+#define VFS_MODE_CHR  0020666
+#define VFS_MODE_BLK  0060666
+
+static uint32_t node_mode(vfs_node_t* node) {
+    if (strncmp(node->name, "/dev/sda", 8) == 0) return VFS_MODE_BLK;
+    if (strncmp(node->name, "/dev/", 5) == 0) return VFS_MODE_CHR;
+    return VFS_MODE_REG;
+}
 
 #define VFS_MAX_NODES 32
 
@@ -30,8 +44,11 @@ void vfs_stdin_push(char c) {
 static int dev_null_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer);
 
 static int dynamic_mem_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
-    if (offset >= (uint32_t)node->size) return 0;
-    uint32_t to_read = (uint32_t)node->size - offset;
+    // Bounded by the logical length, not the allocated capacity -- otherwise
+    // reading a file shorter than its capacity returns zeroed padding out to
+    // whatever it was first allocated at, instead of stopping at EOF.
+    if (offset >= (uint32_t)node->length) return 0;
+    uint32_t to_read = (uint32_t)node->length - offset;
     if (to_read > size) to_read = size;
     memcpy(buffer, (uint8_t*)node->private_data + offset, to_read);
     return to_read;
@@ -48,16 +65,24 @@ void vfs_register_file(const char* name, void* buffer, uint32_t size) {
     strncpy(node->name, name, sizeof(node->name) - 1);
     node->name[sizeof(node->name) - 1] = '\0';
     node->size = size;
+    node->length = size; // fixed content (e.g. a boot module): size == length
     node->read = dynamic_mem_read;
     node->write = dev_null_write; // writing is ignored
     node->private_data = buffer;
 }
 
 static int dynamic_mem_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
+    // Bounds-check the write itself against capacity (size) -- writes are
+    // allowed anywhere within the allocated buffer, unlike reads which stop
+    // at the logical length.
     if (offset >= (uint32_t)node->size) return 0;
     uint32_t to_write = (uint32_t)node->size - offset;
     if (to_write > size) to_write = size;
     memcpy((uint8_t*)node->private_data + offset, buffer, to_write);
+    // Grow the logical length if this write extended past it (never shrink
+    // it here -- only O_TRUNC/truncation should do that).
+    uint32_t new_end = offset + to_write;
+    if (new_end > (uint32_t)node->length) node->length = (int)new_end;
     return to_write;
 }
 
@@ -82,6 +107,7 @@ int vfs_create_file(const char* name, uint32_t size) {
     strncpy(node->name, name, sizeof(node->name) - 1);
     node->name[sizeof(node->name) - 1] = '\0';
     node->size = size;
+    node->length = 0; // newly created file starts empty; size is just capacity
     node->read = dynamic_mem_read;
     node->write = dynamic_mem_write;
     node->private_data = kmalloc(size);
@@ -89,6 +115,7 @@ int vfs_create_file(const char* name, uint32_t size) {
         print_serial("[VFS] Warning: out of memory creating file: ");
         print_serial(name);
         print_serial("\n");
+        errno = ENOMEM;
         return -1; // Do not publish a node with no backing storage.
     }
     // memset is handled by kmalloc now, but explicit memset doesn't hurt.
@@ -290,6 +317,7 @@ void init_vfs(void) {
         dev_sda->read = dev_sda_read;
         dev_sda->write = dev_sda_write;
         dev_sda->size = (int)(ata_get_sector_count() * 512ULL);
+        dev_sda->length = dev_sda->size; // raw block device: whole disk is always addressable
     }
 
     print_serial("[DragonOS] POSIX Virtual File System initialized.\n");
@@ -321,10 +349,11 @@ int open(const char* pathname, int flags) {
             // "not found" path instead of silently opening whatever file
             // happened to be last in the table.
             if (vfs_create_file(pathname, 64 * 1024) != 0) {
-                return -1;
+                return -1; // errno already set by vfs_create_file
             }
             found_index = vfs_node_count - 1;
         } else {
+            errno = ENOENT;
             return -1; // File not found
         }
     }
@@ -335,18 +364,24 @@ int open(const char* pathname, int flags) {
         if (node->private_data) {
             memset(node->private_data, 0, node->size);
         }
+        node->length = 0; // the file is now logically empty, not just zeroed
     }
 
     // Find free File Descriptor
     for (int fd = 3; fd < MAX_FD; fd++) {
         if (!fd_table[fd].used) {
             fd_table[fd].node = node;
-            fd_table[fd].offset = (flags & O_APPEND) ? node->size : 0;
+            // Append at the actual content end (length), not the allocated
+            // capacity (size) -- appending used to seek past the real data
+            // into the unused tail of the buffer, leaving a gap of stale/zero
+            // bytes before whatever got written next.
+            fd_table[fd].offset = (flags & O_APPEND) ? (uint32_t)node->length : 0;
             fd_table[fd].flags = flags;
             fd_table[fd].used = 1;
             return fd;
         }
     }
+    errno = EMFILE;
     return -1; // No free file descriptors
 }
 
@@ -373,17 +408,18 @@ int unlink(const char* pathname) {
             return 0;
         }
     }
+    errno = ENOENT;
     return -1;
 }
 
 int close(int fd) {
-    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) { errno = EBADF; return -1; }
     fd_table[fd].used = 0;
     return 0;
 }
 
 int read(int fd, void* buf, int count) {
-    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) { errno = EBADF; return -1; }
     file_desc_t* f = &fd_table[fd];
     
     if (f->node == &stdin_node) {
@@ -399,8 +435,8 @@ int read(int fd, void* buf, int count) {
         return n;
     }
     
-    if (!f->node->read) return -1;
-    
+    if (!f->node->read) { errno = EBADF; return -1; }
+
     int bytes_read = f->node->read(f->node, f->offset, count, (uint8_t*)buf);
     if (bytes_read > 0) {
         f->offset += bytes_read;
@@ -409,7 +445,7 @@ int read(int fd, void* buf, int count) {
 }
 
 int write(int fd, const void* buf, int count) {
-    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) { errno = EBADF; return -1; }
     file_desc_t* f = &fd_table[fd];
     
     if (f->node == &stdout_node) {
@@ -433,8 +469,8 @@ int write(int fd, const void* buf, int count) {
         return to_copy;
     }
     
-    if (!f->node->write) return -1;
-    
+    if (!f->node->write) { errno = EBADF; return -1; }
+
     int bytes_written = f->node->write(f->node, f->offset, count, (const uint8_t*)buf);
     if (bytes_written > 0) {
         f->offset += bytes_written;
@@ -443,50 +479,56 @@ int write(int fd, const void* buf, int count) {
 }
 
 int lseek(int fd, int offset, int whence) {
-    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) { errno = EBADF; return -1; }
     file_desc_t* f = &fd_table[fd];
-    
+
     if (whence == 0) { // SEEK_SET
         f->offset = offset;
     } else if (whence == 1) { // SEEK_CUR
         f->offset += offset;
     } else if (whence == 2) { // SEEK_END
-        f->offset = f->node->size + offset;
+        // The logical content length, not the allocated capacity -- seeking
+        // to "the end" of a file used to land past the real data, in the
+        // unused tail of its pre-allocated buffer.
+        f->offset = f->node->length + offset;
     } else {
+        errno = EINVAL;
         return -1;
     }
     return f->offset;
 }
 
 int stat(const char* pathname, struct stat* statbuf) {
-    if (!statbuf) return -1;
+    if (!statbuf) { errno = EFAULT; return -1; }
     for (int i = 0; i < vfs_node_count; i++) {
         if (strcmp(vfs_nodes[i].name, pathname) == 0) {
             memset(statbuf, 0, sizeof(struct stat));
-            statbuf->st_size = vfs_nodes[i].size;
-            statbuf->st_mode = 0100666; // S_IFREG | 0666
+            statbuf->st_size = vfs_nodes[i].length;
+            statbuf->st_mode = node_mode(&vfs_nodes[i]);
             return 0;
         }
     }
+    errno = ENOENT;
     return -1;
 }
 
 int fstat(int fd, struct stat* statbuf) {
-    if (!statbuf) return -1;
-    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return -1;
+    if (!statbuf) { errno = EFAULT; return -1; }
+    if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) { errno = EBADF; return -1; }
     memset(statbuf, 0, sizeof(struct stat));
-    statbuf->st_size = fd_table[fd].node->size;
-    statbuf->st_mode = 0100666;
+    statbuf->st_size = fd_table[fd].node->length;
+    statbuf->st_mode = node_mode(fd_table[fd].node);
     return 0;
 }
 
 int access(const char* pathname, int mode) {
-    (void)mode;
+    (void)mode; // no user/permission model to check R_OK/W_OK/X_OK against
     for (int i = 0; i < vfs_node_count; i++) {
         if (strcmp(vfs_nodes[i].name, pathname) == 0) {
             return 0;
         }
     }
+    errno = ENOENT;
     return -1;
 }
 

@@ -8,7 +8,13 @@
 
 typedef struct vfs_node {
     char name[32];
-    int size;
+    int size;    // allocated capacity (dynamic files) or fixed device/file size
+    int length;  // actual logical content length; <= size for dynamic files.
+                 // Distinct from `size` so that writing less data than a
+                 // previous write doesn't leave old trailing bytes visible on
+                 // the next read/stat -- every dynamic file used to report
+                 // its full pre-allocated capacity as its size regardless of
+                 // how much was actually written.
     int (*read)(struct vfs_node* node, uint32_t offset, uint32_t size, uint8_t* buffer);
     int (*write)(struct vfs_node* node, uint32_t offset, uint32_t size, const uint8_t* buffer);
     void* private_data;
