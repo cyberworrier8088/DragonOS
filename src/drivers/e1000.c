@@ -4,6 +4,7 @@
 #include "../mm/paging.h"
 #include "serial.h"
 #include "../libc/string.h"
+#include "../cpu/idt.h"
 
 #define E1000_TX_BUF_SIZE 2048
 
@@ -23,6 +24,7 @@ static struct e1000_rx_desc* rx_descs;
 static struct e1000_tx_desc* tx_descs;
 static void* tx_bufs[E1000_NUM_TX_DESC]; // per-descriptor bounce buffers (HHDM)
 
+static uint16_t rx_cur = 0;
 static uint16_t tx_cur = 0;
 
 // The NIC's DMA engine works on PHYSICAL addresses. kmalloc/pmm hand back HHDM
@@ -120,6 +122,30 @@ static void tx_init() {
     write_command(REG_TCTL, TCTL_EN | TCTL_PSP);
 }
 
+uint64_t e1000_rx_count = 0;
+uint64_t e1000_tx_count = 0;
+
+static void e1000_handler(registers_t* r) {
+    (void)r;
+    uint32_t status = read_command(REG_ICR); // reading clears the interrupt
+    if (!status) return;
+
+    if (status & ICR_RXT0) {
+        // A packet was received
+        while ((rx_descs[rx_cur].status & 0x01) == 0x01) { // Descriptor Done
+            e1000_rx_count++;
+            
+            // Mark descriptor ready for hardware again
+            rx_descs[rx_cur].status = 0;
+            
+            // Advance tail pointer
+            uint16_t old_cur = rx_cur;
+            rx_cur = (rx_cur + 1) % E1000_NUM_RX_DESC;
+            write_command(REG_RDT, old_cur);
+        }
+    }
+}
+
 void e1000_init(void) {
     e1000_device = pci_find_device(E1000_VENDOR_ID, E1000_DEVICE_ID);
     if (!e1000_device) {
@@ -165,16 +191,18 @@ void e1000_init(void) {
     print_serial(mac_str);
     print_serial("\n");
     
-    // Keep NIC interrupts MASKED. There is no e1000 IRQ handler registered, so
-    // enabling them would let an unserviced, level-triggered interrupt latch on
-    // and fire forever -- an interrupt storm that hangs the machine. RX still
-    // fills descriptors via DMA and can be polled. (REG_IMC = interrupt mask
-    // clear; writing all-ones disables every interrupt source.)
-    write_command(REG_IMC, 0xFFFFFFFF);
-    read_command(REG_ICR); // clear any latched cause
-
     rx_init();
     tx_init();
+
+    // Register Interrupt Handler
+    extern void register_interrupt_handler(uint8_t n, isr_t handler);
+    uint8_t irq = e1000_device->irq;
+    register_interrupt_handler(32 + irq, e1000_handler);
+    
+    // Enable NIC interrupts for RX
+    write_command(REG_IMC, 0xFFFFFFFF);
+    write_command(REG_IMS, IMS_RXT0 | IMS_RXO | IMS_LSC);
+    read_command(REG_ICR); // clear any latched cause
 
     print_serial("[E1000] Driver Initialization Complete.\n");
 }
@@ -201,6 +229,34 @@ void e1000_send_packet(const void* p_data, uint16_t p_len) {
     for (volatile int t = 0; t < 5000000; t++) {
         if (tx_descs[old_cur].status & 0xFF) break;
     }
+    
+    e1000_tx_count++;
+}
+
+void e1000_send_broadcast(const char* payload) {
+    uint8_t frame[1514];
+    
+    // Destination MAC: Broadcast
+    for(int i = 0; i < 6; i++) frame[i] = 0xFF;
+    
+    // Source MAC
+    for(int i = 0; i < 6; i++) frame[6 + i] = mac_addr[i];
+    
+    // EtherType (0x1337 custom)
+    frame[12] = 0x13;
+    frame[13] = 0x37;
+    
+    // Payload
+    int payload_len = 0;
+    while(payload[payload_len] && payload_len < 1000) {
+        frame[14 + payload_len] = payload[payload_len];
+        payload_len++;
+    }
+    
+    int total_len = 14 + payload_len;
+    if (total_len < 60) total_len = 60; // minimum ethernet frame size without FCS
+    
+    e1000_send_packet(frame, total_len);
 }
 
 uint8_t* e1000_get_mac_address(void) {

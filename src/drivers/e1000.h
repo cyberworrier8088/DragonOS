@@ -76,8 +76,16 @@ struct e1000_tx_desc {
 #define CMD_IFCS  (1 << 1)  // Insert FCS (CRC)
 #define CMD_RS    (1 << 3)  // Report Status
 
+#define ICR_LSC    (1 << 2)  // Link Status Change
+#define ICR_RXO    (1 << 6)  // Receiver Overrun
+#define ICR_RXT0   (1 << 7)  // Receiver Timer Interrupt
+#define IMS_LSC    (1 << 2)
+#define IMS_RXO    (1 << 6)
+#define IMS_RXT0   (1 << 7)
+
 void e1000_init(void);
 void e1000_send_packet(const void* p_data, uint16_t p_len);
+void e1000_send_broadcast(const char* payload);
 uint8_t* e1000_get_mac_address(void);
 
 #endif

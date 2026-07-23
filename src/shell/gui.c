@@ -219,7 +219,9 @@ static void gui_execute_command(const char* cmd) {
         gui_write_string(tick_str);
         gui_write_string("\n");
     } else if (strcmp(cmd, "ping") == 0) {
-        gui_write_string("pong!\n");
+        extern void e1000_send_broadcast(const char*);
+        e1000_send_broadcast("DragonOS Ping!");
+        gui_write_string("Broadcast ping sent via E1000!\n");
     } else if (strncmp(cmd, "echo ", 5) == 0) {
         gui_write_string(cmd + 5);
         gui_write_string("\n");
@@ -862,6 +864,22 @@ static void draw_window_content(gui_window_t* win) {
         mac_str[idx] = '\0';
         draw_string(x + 12, gy + gh + 28, mac_str, 0xAAAAAA);
         draw_string(x + 160, gy + gh + 28, "Link: UP (1000 Mbps)", 0x00FF00);
+
+        extern uint64_t e1000_tx_count;
+        extern uint64_t e1000_rx_count;
+        
+        char tx_str[32] = "TX Packets: ";
+        char tx_num[16];
+        int_to_ascii((int)e1000_tx_count, tx_num);
+        strcat(tx_str, tx_num);
+        
+        char rx_str[32] = "RX Packets: ";
+        char rx_num[16];
+        int_to_ascii((int)e1000_rx_count, rx_num);
+        strcat(rx_str, rx_num);
+
+        draw_string(x + 12, gy + gh + 44, tx_str, 0x00CC6A);
+        draw_string(x + 160, gy + gh + 44, rx_str, 0x00CC6A);
     }
     else if (win->id == 4) {
         /* ---- Doom window ---- */

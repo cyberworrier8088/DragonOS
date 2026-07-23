@@ -95,6 +95,9 @@ void pci_check_device(uint8_t bus, uint8_t slot) {
             device->bar[i] = bar_val;
         }
 
+        uint32_t irq_reg = pci_read_config_dword(bus, slot, func, 0x3C);
+        device->irq = irq_reg & 0xFF;
+
         device->next = pci_devices_head;
         pci_devices_head = device;
         pci_device_count++;
