@@ -189,6 +189,10 @@ void kernel_main(void) {
     extern void ata_init(void);
     ata_init();
 
+    /* Initialize NVMe Disk Controller */
+    extern void nvme_init(void);
+    nvme_init();
+
     /* Initialize POSIX VFS */
     init_vfs();
 
@@ -268,6 +272,36 @@ void kernel_main(void) {
         print_serial(" (stored on /dev/sda -- increments across real reboots)\n");
     } else {
         print_serial("[DragonOS] Persistent Disk Test: /dev/sda not available (no disk image attached).\n");
+    }
+
+    // Same real-persistence proof as the /dev/sda test above, run
+    // independently against the NVMe namespace with a distinct magic so the
+    // two counters can never be confused with each other in the serial log.
+    int nvme_fd = open("/dev/nvme0n1", O_RDWR);
+    if (nvme_fd >= 0) {
+        struct { uint32_t magic; uint32_t boot_count; } persist;
+        int bytes = read(nvme_fd, &persist, sizeof(persist));
+
+        uint32_t boot_count;
+        if (bytes == (int)sizeof(persist) && persist.magic == 0x4E564D45) { // 'NVME'
+            boot_count = persist.boot_count + 1;
+        } else {
+            boot_count = 1; // first boot, or an unrecognized/blank namespace
+        }
+
+        persist.magic = 0x4E564D45;
+        persist.boot_count = boot_count;
+        lseek(nvme_fd, 0, 0);
+        write(nvme_fd, &persist, sizeof(persist));
+        close(nvme_fd);
+
+        char count_str[16];
+        int_to_ascii((int)boot_count, count_str);
+        print_serial("[DragonOS] Persistent Disk Test: NVMe boot count = ");
+        print_serial(count_str);
+        print_serial(" (stored on /dev/nvme0n1 -- increments across real reboots)\n");
+    } else {
+        print_serial("[DragonOS] Persistent Disk Test: /dev/nvme0n1 not available (no NVMe namespace attached).\n");
     }
 
     /* Initialize Window Manager GUI */

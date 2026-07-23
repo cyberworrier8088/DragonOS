@@ -2,6 +2,7 @@
 #include "../libc/string.h"
 #include "../drivers/serial.h"
 #include "../drivers/ata.h"
+#include "../drivers/nvme.h"
 #include "../shell/gui.h"
 #include "../mm/pmm.h"
 #include "../mm/kheap.h"
@@ -16,6 +17,7 @@
 
 static uint32_t node_mode(vfs_node_t* node) {
     if (strncmp(node->name, "/dev/sda", 8) == 0) return VFS_MODE_BLK;
+    if (strncmp(node->name, "/dev/nvme0n1", 12) == 0) return VFS_MODE_BLK;
     if (strncmp(node->name, "/dev/", 5) == 0) return VFS_MODE_CHR;
     return VFS_MODE_REG;
 }
@@ -270,6 +272,94 @@ static int dev_sda_write(vfs_node_t* node, uint32_t offset, uint32_t size, const
     return (int)bytes_written;
 }
 
+// Same shape as dev_sda_read/write, but driven by the namespace's actual
+// LBA size (512 or 4096 bytes) instead of ATA's fixed 512, since NVMe
+// namespaces are commonly formatted 4Kn.
+static int dev_nvme_read(vfs_node_t* node, uint32_t offset, uint32_t size, uint8_t* buffer) {
+    if (size == 0) return 0;
+    uint32_t sector_size = nvme_get_sector_size();
+    if (sector_size == 0) return -1;
+
+    if (offset >= (uint32_t)node->size) return 0;
+    if (size > (uint32_t)node->size - offset) {
+        size = (uint32_t)node->size - offset;
+    }
+
+    uint32_t bytes_read = 0;
+    while (bytes_read < size) {
+        uint32_t chunk_offset = offset + bytes_read;
+        uint32_t chunk_size = size - bytes_read;
+        if (chunk_size > 32768) {
+            chunk_size = 32768;
+        }
+
+        uint64_t lba = chunk_offset / sector_size;
+        uint64_t end_lba = (chunk_offset + chunk_size - 1) / sector_size;
+        uint32_t count = (uint32_t)(end_lba - lba + 1);
+
+        void* temp = kmalloc((size_t)count * sector_size);
+        if (!temp) return bytes_read > 0 ? (int)bytes_read : -1;
+
+        if (nvme_read_sectors(lba, count, temp) < 0) {
+            kfree(temp);
+            return bytes_read > 0 ? (int)bytes_read : -1;
+        }
+
+        uint32_t off_in_sector = chunk_offset % sector_size;
+        memcpy(buffer + bytes_read, (uint8_t*)temp + off_in_sector, chunk_size);
+        kfree(temp);
+
+        bytes_read += chunk_size;
+    }
+    return (int)bytes_read;
+}
+
+static int dev_nvme_write(vfs_node_t* node, uint32_t offset, uint32_t size, const uint8_t* buffer) {
+    if (size == 0) return 0;
+    uint32_t sector_size = nvme_get_sector_size();
+    if (sector_size == 0) return -1;
+
+    if (offset >= (uint32_t)node->size) return -1;
+    if (size > (uint32_t)node->size - offset) {
+        size = (uint32_t)node->size - offset;
+    }
+
+    uint32_t bytes_written = 0;
+    while (bytes_written < size) {
+        uint32_t chunk_offset = offset + bytes_written;
+        uint32_t chunk_size = size - bytes_written;
+        if (chunk_size > 32768) {
+            chunk_size = 32768;
+        }
+
+        uint64_t lba = chunk_offset / sector_size;
+        uint64_t end_lba = (chunk_offset + chunk_size - 1) / sector_size;
+        uint32_t count = (uint32_t)(end_lba - lba + 1);
+
+        void* temp = kmalloc((size_t)count * sector_size);
+        if (!temp) return bytes_written > 0 ? (int)bytes_written : -1;
+
+        if ((chunk_offset % sector_size != 0) || (chunk_size < count * sector_size)) {
+            if (nvme_read_sectors(lba, count, temp) < 0) {
+                kfree(temp);
+                return bytes_written > 0 ? (int)bytes_written : -1;
+            }
+        }
+
+        uint32_t off_in_sector = chunk_offset % sector_size;
+        memcpy((uint8_t*)temp + off_in_sector, buffer + bytes_written, chunk_size);
+
+        if (nvme_write_sectors(lba, count, temp) < 0) {
+            kfree(temp);
+            return bytes_written > 0 ? (int)bytes_written : -1;
+        }
+
+        kfree(temp);
+        bytes_written += chunk_size;
+    }
+    return (int)bytes_written;
+}
+
 void init_vfs(void) {
     memset(fd_table, 0, sizeof(fd_table));
     
@@ -318,6 +408,23 @@ void init_vfs(void) {
         dev_sda->write = dev_sda_write;
         dev_sda->size = (int)(ata_get_sector_count() * 512ULL);
         dev_sda->length = dev_sda->size; // raw block device: whole disk is always addressable
+    }
+
+    // Only publish /dev/nvme0n1 if nvme_init() found a controller with a
+    // usable namespace. node->size/length are 32-bit int (see vfs.h), so a
+    // namespace larger than INT32_MAX bytes is clamped here instead of
+    // silently wrapping negative and defeating the offset bounds checks in
+    // dev_nvme_read/write above.
+    if (nvme_disk_present()) {
+        uint64_t total_bytes = nvme_get_sector_count() * (uint64_t)nvme_get_sector_size();
+        if (total_bytes > 0x7FFFFFFFULL) total_bytes = 0x7FFFFFFFULL;
+
+        vfs_node_t* dev_nvme = &vfs_nodes[vfs_node_count++];
+        strcpy(dev_nvme->name, "/dev/nvme0n1");
+        dev_nvme->read = dev_nvme_read;
+        dev_nvme->write = dev_nvme_write;
+        dev_nvme->size = (int)total_bytes;
+        dev_nvme->length = dev_nvme->size;
     }
 
     print_serial("[DragonOS] POSIX Virtual File System initialized.\n");

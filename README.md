@@ -12,6 +12,7 @@ The kernel is linked in the higher-half virtual address space (`0xffffffff800000
 *   DOOM (doomgeneric) port running in a desktop window
 *   Native applications: Terminal, Calculator, File Explorer, System Monitor, 2048, Lua interpreter, Tiny C Compiler
 *   POSIX-style VFS layer (`open`/`read`/`write`/`lseek`/`close`, `O_CREAT`/`O_TRUNC`/`O_APPEND`, `unlink`)
+*   Real NVMe 1.4 PCIe driver (`/dev/nvme0n1`) alongside legacy ATA/IDE (`/dev/sda`): 64-bit BAR MMIO, admin + I/O queues, PRP-based DMA, Identify/Read/Write/Flush
 *   Buddy physical memory allocator, kernel heap with O(1)/O(N) free-block coalescing, 4-level paging with `paging_make_user` page-table permissions
 *   Preemptive multi-threading and Ring 3 user space with Task State Segment (TSS) `RSP0` stack switching, software interrupt system calls (`int 0x80`), cooperative yielding (`sys_yield`), and safe thread exit (`sys_exit`)
 *   Fault isolation: a CPU exception raised inside a game or Ring 3 user task terminates only the faulting process and unwinds back to the desktop shell rather than halting the system
@@ -23,7 +24,7 @@ The kernel is linked in the higher-half virtual address space (`0xffffffff800000
 *   **src/kernel.c**: Entry point. Fetches framebuffer details, initializes drivers, registers Limine modules with the VFS, sets up page permissions and scheduler tasks, and runs the desktop loop. The loop passes real PIT-measured frame times to the Quake host and yields with `hlt` between game frames; when idle it throttles to approximately 60 FPS.
 *   **src/cpu/**: 64-bit GDT and TSS initialization (`gdt.c`), IDT vector installation (`idt.c`), assembly interrupt stubs (`interrupt.asm`), scheduler subsystem (`scheduler.c`), and port I/O. Vector `0x80` acts as the Ring 3 system call gate. The exception handler logs vector, error code, RIP, and CR2 to serial. Exceptions occurring in Ring 3 log the fault, terminate the faulting task, and trigger a context switch, preserving overall OS stability.
 *   **src/mm/**: Buddy physical page allocator (`pmm.c`), kernel heap (`kheap.c` with best-fit allocation and block coalescing), and 4-level paging (`paging.c`) supporting page permissions adjustment (`paging_make_user`) and TLB line invalidations (`invlpg`).
-*   **src/drivers/**: Framebuffer graphics (double-buffered, clipped primitives, alpha blending), PS/2 keyboard and mouse (IRQ1/IRQ12), PIT timer at 100Hz, UART serial, RTC, PCI enumeration, ATA.
+*   **src/drivers/**: Framebuffer graphics (double-buffered, clipped primitives, alpha blending), PS/2 keyboard and mouse (IRQ1/IRQ12), PIT timer at 100Hz, UART serial, RTC, PCI enumeration, ATA, NVMe (`nvme.c`: 64-bit MMIO BAR mapping, admin/I/O submission-completion queue rings, PRP list DMA, polled Phase-Tag command completion).
 *   **src/fs/**: In-memory POSIX-style VFS. Limine boot modules (game data, wallpaper, scripts) are registered as read-only files; dynamically created files are heap-backed.
 *   **src/libc/**: Freestanding C runtime subset: string/memory routines, `printf` family, `setjmp`/`longjmp`, math functions, and a stdio layer that maps `FILE*` operations onto VFS file descriptors.
 *   **src/shell/**: Desktop shell, window manager, terminal, and embedded Lua/TCC.

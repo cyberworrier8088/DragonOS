@@ -61,6 +61,7 @@ OBJS = boot.o \
        src/drivers/pci.o \
        src/drivers/rtc.o \
        src/drivers/ata.o \
+       src/drivers/nvme.o \
        src/drivers/e1000.o \
        src/fs/vfs.o \
        $(DOOM_OBJS) \
@@ -196,6 +197,15 @@ QEMU_MACHINE = -M q35 -nic model=e1000
 disk.img:
 	qemu-img create -f raw disk.img 64M
 
+# Real persistent disk backing /dev/nvme0n1 through the NVMe driver's PCIe
+# controller (src/drivers/nvme.c) -- a separate image from disk.img so the
+# ATA and NVMe paths can be exercised side by side without disturbing each
+# other. Sized larger than disk.img purely to read as "the modern one" in
+# the boot log; NVMe emulation doesn't care about image size either way.
+# Like disk.img, this rule only fires if the image doesn't already exist.
+nvme_disk.img:
+	qemu-img create -f raw nvme_disk.img 256M
+
 # q35 has no legacy IDE controller by default (only AHCI), so one is added
 # explicitly here, wired to the exact fixed ports the ATA driver expects.
 # The classic i440fx "pc" machine (used by run-legacy below) already includes
@@ -203,7 +213,12 @@ disk.img:
 QEMU_IDE_CTRL = -device piix3-ide,id=ide
 QEMU_DISK = -drive if=none,id=hd0,format=raw,file=disk.img -device ide-hd,drive=hd0,bus=ide.0,unit=0
 
-run: dragonos.iso disk.img
+# NVMe is a standard PCI(e) device, not chipset-specific, so this works
+# unmodified under both q35 and the legacy i440fx "pc" machine below.
+# `serial=` is mandatory for QEMU's nvme device model.
+QEMU_NVME = -drive if=none,id=nvme0,format=raw,file=nvme_disk.img -device nvme,drive=nvme0,serial=DEADBEEF0001
+
+run: dragonos.iso disk.img nvme_disk.img
 	# GDK_BACKEND=x11: under WSLg (and some other Wayland compositors), QEMU's
 	# GTK display fails to get a valid input "seat" over native Wayland
 	# (Gdk-CRITICAL/gdk_seat_get_keyboard warnings spam stderr), which leaves
@@ -211,19 +226,19 @@ run: dragonos.iso disk.img
 	# itself is running fine -- it just looks frozen. Forcing GTK onto X11 (via
 	# XWayland, present wherever GTK is) is the standard fix and is a no-op on
 	# setups that don't hit this bug.
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_NVME) $(QEMU_ACCEL)
 
-run-curses: dragonos.iso disk.img
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
+run-curses: dragonos.iso disk.img nvme_disk.img
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_NVME) $(QEMU_ACCEL)
 
-run-nographic: dragonos.iso disk.img
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_ACCEL)
+run-nographic: dragonos.iso disk.img nvme_disk.img
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_MACHINE) $(QEMU_IDE_CTRL) $(QEMU_DISK) $(QEMU_NVME) $(QEMU_ACCEL)
 
 # Fallback to the classic i440fx/PIIX "pc" machine and the original e1000
 # PCI ID QEMU picks for it, in case q35 ever needs to be ruled out on a
 # specific host. Its built-in IDE controller picks up the same disk.img.
-run-legacy: dragonos.iso disk.img
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_DISK) $(QEMU_ACCEL)
+run-legacy: dragonos.iso disk.img nvme_disk.img
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_DISK) $(QEMU_NVME) $(QEMU_ACCEL)
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir
