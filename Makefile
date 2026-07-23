@@ -157,7 +157,14 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad i
 	./limine-bin/limine bios-install $@
 
 run: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso
+	# GDK_BACKEND=x11: under WSLg (and some other Wayland compositors), QEMU's
+	# GTK display fails to get a valid input "seat" over native Wayland
+	# (Gdk-CRITICAL/gdk_seat_get_keyboard warnings spam stderr), which leaves
+	# the window unable to receive keyboard/mouse input even though the guest
+	# itself is running fine -- it just looks frozen. Forcing GTK onto X11 (via
+	# XWayland, present wherever GTK is) is the standard fix and is a no-op on
+	# setups that don't hit this bug.
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso
 
 run-curses: dragonos.iso
 	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses
