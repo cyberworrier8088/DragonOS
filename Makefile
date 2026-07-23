@@ -156,6 +156,22 @@ dragonos.iso: dragonos.bin limine.conf limine-bin/limine isodir/boot/doom1.wad i
 		-o $@ isodir
 	./limine-bin/limine bios-install $@
 
+# -accel kvm -accel tcg: try real hardware virtualization (VT-x/AMD-V) first
+# and only fall back to slow software emulation (TCG) if KVM isn't usable --
+# QEMU tries each in order and silently continues past a KVM init failure. This
+# is the single biggest speed/smoothness lever available: KVM runs guest code
+# directly on the CPU instead of interpreting it instruction-by-instruction.
+# -cpu max: exposes the largest feature set the chosen accelerator supports;
+# unlike -cpu host, it works correctly under both KVM and TCG.
+#
+# On WSL2, /dev/kvm exists on modern builds but is owned by root:kvm -- if
+# `qemu-system-x86_64 -accel kvm ...` prints "Could not access KVM kernel
+# module: Permission denied", your user isn't in the kvm group yet:
+#   sudo usermod -aG kvm $USER
+# then fully restart the WSL VM (`wsl --shutdown` from Windows, not just
+# closing the terminal) so the new group membership takes effect.
+QEMU_ACCEL = -accel kvm -accel tcg -cpu max
+
 run: dragonos.iso
 	# GDK_BACKEND=x11: under WSLg (and some other Wayland compositors), QEMU's
 	# GTK display fails to get a valid input "seat" over native Wayland
@@ -164,13 +180,13 @@ run: dragonos.iso
 	# itself is running fine -- it just looks frozen. Forcing GTK onto X11 (via
 	# XWayland, present wherever GTK is) is the standard fix and is a no-op on
 	# setups that don't hit this bug.
-	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso
+	GDK_BACKEND=x11 qemu-system-x86_64 -m 512M -cdrom dragonos.iso $(QEMU_ACCEL)
 
 run-curses: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -display curses $(QEMU_ACCEL)
 
 run-nographic: dragonos.iso
-	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio
+	qemu-system-x86_64 -m 512M -cdrom dragonos.iso -nographic -serial mon:stdio $(QEMU_ACCEL)
 
 clean:
 	rm -rf $(OBJS) dragonos.bin dragonos.iso isodir
