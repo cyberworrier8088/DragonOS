@@ -9,10 +9,15 @@ FILE* fopen(const char* filename, const char* mode) {
     // Map relative filename "doom1.wad" to "/boot/doom1.wad" if needed
     char path[64];
     if (filename[0] != '/') {
-        strcpy(path, "/boot/");
-        strcat(path, filename);
+        // strncpy, not strcpy/strcat: filename length isn't bounded by any
+        // caller contract, and this is a fixed 64-byte stack buffer.
+        strncpy(path, "/boot/", sizeof(path) - 1);
+        size_t used = strlen(path);
+        strncpy(path + used, filename, sizeof(path) - 1 - used);
+        path[sizeof(path) - 1] = '\0';
     } else {
-        strcpy(path, filename);
+        strncpy(path, filename, sizeof(path) - 1);
+        path[sizeof(path) - 1] = '\0';
     }
 
     int fd = open(path, 0);
@@ -100,13 +105,23 @@ int vsprintf(char* str, const char* format, va_list ap) {
             f++;
 
             int zero_pad = 0;
+            int left_justify = 0;
             int width = 0;
             int precision = -1;
 
-            // Check for zero padding flag
-            if (*f == '0') {
-                zero_pad = 1;
-                f++;
+            // Parse flags. These can appear in either order (e.g. "%-08d" and
+            // "%0-8d" are both valid), so loop instead of checking '0' once --
+            // a lone one-shot check left '-' unrecognized. That mattered in
+            // practice: real (vendored) Quake code formats with "%-15.15s",
+            // and the unrecognized '-' fell through every type check into the
+            // "unknown format" branch, which echoes "%-" literally and treats
+            // the rest of the directive ("15.15s") as plain text on the next
+            // loop iteration -- silently skipping the va_arg for that
+            // argument and desyncing every va_arg after it in the same call.
+            for (;;) {
+                if (*f == '0') { zero_pad = 1; f++; }
+                else if (*f == '-') { left_justify = 1; f++; }
+                else break;
             }
 
             // Parse width
@@ -146,24 +161,32 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     len--;
                 }
 
-                // Determine padding target size
-                int target = len;
-                if (precision > target) target = precision;
-                if (width > target + neg && zero_pad) target = width - neg;
+                // Precision is a minimum digit count (zero-extends the value);
+                // width is the minimum total field width including the sign.
+                // Previously width only did anything when zero_pad was also
+                // set, so e.g. "%2u" (width with no '0' flag -- used by real
+                // vendored code for column alignment) silently printed
+                // unpadded. Per C's printf rules, '0' is ignored whenever
+                // left-justified or a precision was given.
+                int digits_target = len;
+                if (precision > digits_target) digits_target = precision;
+                int content_len = digits_target + neg;
+                int pad = (width > content_len) ? (width - content_len) : 0;
+                int use_zero = zero_pad && !left_justify && precision < 0;
 
-                // Write negative sign if applicable
-                if (neg) {
-                    *d++ = '-';
+                if (!left_justify && !use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
                 }
-
-                // Write leading zeros
-                for (int i = len; i < target; i++) {
-                    *d++ = '0';
+                if (neg) *d++ = '-';
+                if (!left_justify && use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = '0';
                 }
-
-                // Write actual digits
+                for (int i = len; i < digits_target; i++) *d++ = '0'; // precision zero-extension
                 strcpy(d, p);
                 d += len;
+                if (left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
 
             } else if (*f == 'u') {
                 unsigned long val = is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
@@ -186,15 +209,23 @@ int vsprintf(char* str, const char* format, va_list ap) {
                 }
 
                 int len = idx;
-                int target = len;
-                if (precision > target) target = precision;
-                if (width > target && zero_pad) target = width;
+                int digits_target = len;
+                if (precision > digits_target) digits_target = precision;
+                int pad = (width > digits_target) ? (width - digits_target) : 0;
+                int use_zero = zero_pad && !left_justify && precision < 0;
 
-                for (int i = len; i < target; i++) {
-                    *d++ = '0';
+                if (!left_justify && !use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
                 }
+                if (!left_justify && use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = '0';
+                }
+                for (int i = len; i < digits_target; i++) *d++ = '0';
                 strcpy(d, num);
                 d += len;
+                if (left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
 
             } else if (*f == 'x') {
                 unsigned long val = is_long ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
@@ -218,19 +249,26 @@ int vsprintf(char* str, const char* format, va_list ap) {
                 }
 
                 int len = idx;
-                int target = len;
-                if (precision > target) target = precision;
-                if (width > target && zero_pad) target = width;
+                int digits_target = len;
+                if (precision > digits_target) digits_target = precision;
+                int pad = (width > digits_target) ? (width - digits_target) : 0;
+                int use_zero = zero_pad && !left_justify && precision < 0;
 
-                for (int i = len; i < target; i++) {
-                    *d++ = '0';
+                if (!left_justify && !use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
                 }
+                if (!left_justify && use_zero) {
+                    for (int i = 0; i < pad; i++) *d++ = '0';
+                }
+                for (int i = len; i < digits_target; i++) *d++ = '0';
                 strcpy(d, hex);
                 d += len;
-                
+                if (left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
+
             } else if (*f == 'p') {
                 unsigned long val = (unsigned long)va_arg(ap, void*);
-                *d++ = '0'; *d++ = 'x';
                 char hex[20];
                 int idx = 0;
                 if (val == 0) {
@@ -248,17 +286,32 @@ int vsprintf(char* str, const char* format, va_list ap) {
                     hex[i] = hex[j];
                     hex[j] = temp;
                 }
+
+                int content_len = idx + 2; // + "0x"
+                int pad = (width > content_len) ? (width - content_len) : 0;
+                if (!left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
+                *d++ = '0'; *d++ = 'x';
                 strcpy(d, hex);
                 d += idx;
+                if (left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
 
             } else if (*f == 's') {
                 char* s = va_arg(ap, char*);
                 if (!s) s = "(null)";
                 int slen = strlen(s);
                 if (precision >= 0 && precision < slen) slen = precision;
-                /* Right-pad with spaces if width > slen */
-                for (int i = slen; i < width; i++) *d++ = ' ';
+                int pad = (width > slen) ? (width - slen) : 0;
+                if (!left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
                 for (int i = 0; i < slen; i++) *d++ = s[i];
+                if (left_justify) {
+                    for (int i = 0; i < pad; i++) *d++ = ' ';
+                }
             } else if (*f == 'c') {
                 char c = (char)va_arg(ap, int);
                 *d++ = c;
@@ -381,7 +434,7 @@ int feof(FILE* stream) {
     int fd = *(int*)stream;
     extern file_desc_t fd_table[];
     if (fd < 0 || fd >= MAX_FD || !fd_table[fd].used) return 1;
-    return fd_table[fd].offset >= fd_table[fd].node->size;
+    return fd_table[fd].offset >= (uint32_t)fd_table[fd].node->size;
 }
 
 int ferror(FILE* stream) {
