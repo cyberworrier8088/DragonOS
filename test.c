@@ -39,6 +39,12 @@ int main() {
     }
     printf("\n10! = %d\n", fact);
 
+    /* Literal initializer and chained multiplication of non-lvalues */
+    int x = 5;
+    printf("\nx = %d\n", x);
+    printf("6*7 = %d\n", 6 * 7);
+    printf("2*3*4 = %d\n", 2 * 3 * 4);
+
     printf("\nTCC compilation successful!\n");
     return 0;
 }

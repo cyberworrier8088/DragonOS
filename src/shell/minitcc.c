@@ -151,6 +151,10 @@ typedef struct {
     int continue_stack[64];
     int loop_depth;
 
+    /* Nested-parenthesis depth in parse_primary(), guarded against unbounded
+     * recursion (see parse_primary). */
+    int paren_depth;
+
     /* Error tracking */
     int  has_error;
     char error_msg[256];
@@ -588,6 +592,19 @@ static void parse_primary(TccState* s) {
     }
     else if (s->token == '(') {
         next_token(s);
+        // Each nested '(' recurses back through the entire precedence chain
+        // (parse_expr -> ... -> parse_unary -> parse_postfix ->
+        // parse_primary, roughly a dozen native frames). Nothing bounded that
+        // depth, so a source file with enough nested parens exhausts the
+        // native C call stack while compiling, before the VM even runs.
+        // tcc_error() sets has_error, which the `if (s->has_error) return;`
+        // at the top of this function (and equivalent checks elsewhere)
+        // unwinds through on the way back out, same as any other parse error.
+        if (s->paren_depth >= 200) {
+            tcc_error(s, "expression nested too deeply");
+            return;
+        }
+        s->paren_depth++;
         /* Check if this is a cast expression */
         if (is_type_keyword(s->token)) {
             parse_type(s);
@@ -597,6 +614,7 @@ static void parse_primary(TccState* s) {
             parse_expr(s);
             expect(s, ')');
         }
+        s->paren_depth--;
     }
     else if (s->token == TK_ID) {
         char name[MAX_ID_LEN];
@@ -740,8 +758,16 @@ static void parse_mul(TccState* s) {
     while (s->token == '*' || s->token == '/' || s->token == '%') {
         int op = s->token;
         next_token(s);
-        /* Load left operand if it was an lvalue */
-        emit(s, OP_LOAD);
+        // Every sibling precedence level (parse_add, parse_shift, etc.) calls
+        // load_rvalue(s) here, which only emits OP_LOAD if the left operand
+        // actually was an lvalue. This unconditionally emitted OP_LOAD,
+        // dereferencing the left operand's raw value as a pointer whenever it
+        // wasn't a bare lvalue -- a literal, a call result, a parenthesized
+        // expression, or a previous '*'/'/' in a chain (is_lvalue is forced
+        // to 0 at the end of each loop iteration below). `6 * 7` dereferenced
+        // address 6; `a * b * c` broke on the second '*' even for plain int
+        // locals.
+        load_rvalue(s);
         parse_unary(s);
         load_rvalue(s);
         s->is_lvalue = 1;
@@ -971,7 +997,13 @@ static void parse_statement(TccState* s) {
         expect(s, ')');
         int jz = emit_placeholder(s);
 
-        s->loop_depth++;
+        // break_stack/continue_stack are fixed int[64]; unlike add_local's
+        // "too many local variables" check, nothing guarded this increment,
+        // so 64+ levels of nested loops would index past the array and
+        // corrupt adjacent TccState fields (loop_depth itself next, then
+        // has_error/error_msg).
+        if (s->loop_depth < 63) s->loop_depth++;
+        else tcc_error(s, "loops nested too deeply");
         s->break_stack[s->loop_depth] = -1;
         s->continue_stack[s->loop_depth] = loop_start;
         parse_statement(s);
@@ -1033,7 +1065,9 @@ static void parse_statement(TccState* s) {
         expect(s, ')');
 
         /* Body */
-        s->loop_depth++;
+        // See the matching check in the while-loop case above.
+        if (s->loop_depth < 63) s->loop_depth++;
+        else tcc_error(s, "loops nested too deeply");
         s->break_stack[s->loop_depth] = -1;
         s->continue_stack[s->loop_depth] = (incr_jmp != -1) ? incr_code : loop_start;
 
@@ -1062,7 +1096,12 @@ static void parse_statement(TccState* s) {
         } else {
             emit2(s, OP_IMM, 0);
         }
-        emit(s, OP_LEAVE);
+        // No OP_LEAVE here: OP_RET already does sp = bp itself (see its VM
+        // case). Emitting OP_LEAVE first reset sp = bp BEFORE OP_RET read the
+        // return value we just pushed above bp -- so OP_RET's `*--sp` popped
+        // bp[-1] (the caller's saved base pointer, placed there by OP_CALL)
+        // instead of the actual return value. Every function that returned a
+        // value returned garbage; this affected every call site.
         emit(s, OP_RET);
         expect(s, ';');
     }
@@ -1090,16 +1129,30 @@ static void parse_statement(TccState* s) {
             /* Array declaration */
             if (s->token == '[') {
                 next_token(s);
-                /* Parse array size -- allocate on data segment */
-                int arr_size = 8; /* default */
+                /* Parse array size -- allocate on data segment. Computed as
+                 * `long` first (token_val is a long) so a huge element count
+                 * can't silently wrap the multiplication itself before the
+                 * bounds check below ever sees it. */
+                long arr_size = 8; /* default */
                 if (s->token == TK_NUM) {
-                    arr_size = (int)s->token_val * size;
+                    arr_size = s->token_val * size;
                     next_token(s);
                 }
                 expect(s, ']');
-                /* Store array base address in the local */
+                /* Store array base address in the local. Unlike store_string
+                 * (which bounds-checks data_pos + len against MAX_DATA), this
+                 * had no check at all: data_pos could grow arbitrarily past
+                 * the fixed 32KB `data[MAX_DATA]` field, and every later
+                 * global/string address computed from data_pos would then
+                 * point outside data[] -- and potentially outside the whole
+                 * TccState allocation -- silently corrupting unrelated
+                 * memory the first time that array was indexed near its end. */
+                if (arr_size < 0 || arr_size > MAX_DATA || s->data_pos + arr_size >= MAX_DATA) {
+                    tcc_error(s, "array too large for data segment");
+                    arr_size = 0;
+                }
                 int arr_addr = s->data_pos;
-                s->data_pos += arr_size;
+                s->data_pos += (int)arr_size;
                 s->data_pos = (s->data_pos + 7) & ~7;
                 emit2(s, OP_LOCAL, off);
                 emit2(s, OP_IMM, arr_addr);
@@ -1111,7 +1164,14 @@ static void parse_statement(TccState* s) {
                 next_token(s);
                 emit2(s, OP_LOCAL, off);
                 parse_assign_expr(s);
-                emit(s, OP_LOAD);
+                // OP_STORE expects [address, value] on the stack. The
+                // unconditional OP_LOAD here treated whatever the initializer
+                // expression left on top of the stack as an ADDRESS to
+                // dereference, regardless of whether it actually was one.
+                // For a literal or any other non-lvalue initializer (e.g.
+                // "int x = 5;"), that value IS the value to store -- loading
+                // it first dereferenced address 5 instead of just storing 5.
+                load_rvalue(s);
                 emit(s, OP_STORE);
                 emit(s, OP_POP);
             }
@@ -1206,7 +1266,9 @@ static void parse_program(TccState* s) {
 
             /* Default return 0 */
             emit2(s, OP_IMM, 0);
-            emit(s, OP_LEAVE);
+            // See the OP_RET comment in the explicit `return` case above:
+            // OP_LEAVE must not run before OP_RET, which already does its
+            // own sp = bp after popping the return value.
             emit(s, OP_RET);
 
             /* Patch ENTER with actual local count */
@@ -1259,6 +1321,21 @@ static int vm_execute(TccState* s) {
         printf("tcc: error: undefined reference to 'main'\n");
         return 1;
     }
+
+    /* Push a sentinel call frame before jumping into main(), exactly like
+     * OP_CALL does for a nested call. Without this, main()'s eventual OP_RET
+     * pops its "saved pc"/"saved bp" from one and two slots *before* the
+     * start of stack[] (sp and bp both start equal to `stack`, so OP_RET's
+     * sp = bp; bp = *--sp; pc = *--sp; reads stack[-1] and stack[-2]) --
+     * an out-of-bounds read that also corrupts adjacent locals in this
+     * function via the out-of-bounds write right after. The garbage pc read
+     * back is essentially never 0, so the `pc == 0` "returned from main"
+     * check misses too, and the VM goes on to execute whatever garbage
+     * bytecode offset that pc happened to be. pc=0 here guarantees that
+     * check fires correctly the moment main() returns. */
+    *sp++ = 0;
+    *sp++ = (long)bp;
+    bp = sp;
     pc = main_sym->addr;
 
     /* VM execution loop */
@@ -1266,6 +1343,23 @@ static int vm_execute(TccState* s) {
         cycle++;
         if (pc < 0 || pc >= s->code_pos) {
             printf("tcc: runtime error: PC out of bounds (%d)\n", pc);
+            return 1;
+        }
+
+        // Every push path (OP_IMM/OP_STR/OP_LOCAL/OP_GLOBAL, OP_CALL's
+        // pc/bp/args, OP_BUILTIN's result, OP_RET, OP_DUP, OP_PUSH) writes via
+        // `*sp++ = ...` with no bounds check against stack+MAX_STACK. Nothing
+        // here previously limited recursion depth, so e.g. `fib(30)` or
+        // straightforward unbounded recursion runs sp past the end of this
+        // 8192-long array -- and since `stack` is a local of this function,
+        // that's a real native-stack-smashing write, not just a VM-level
+        // failure, and the 10,000,000-cycle limit above does nothing to stop
+        // it (each call only costs a handful of cycles). The largest single
+        // instruction can push is OP_CALL's 2 + nargs; 256 slots of margin,
+        // checked once per instruction fetch, comfortably covers any
+        // realistic argument count before the *next* check would catch it.
+        if (sp >= stack + MAX_STACK - 256) {
+            printf("tcc: runtime error: stack overflow (recursion too deep?)\n");
             return 1;
         }
 
@@ -1287,7 +1381,16 @@ static int vm_execute(TccState* s) {
 
         case OP_LOCAL: {
             int offset = s->code[pc++];
-            *sp++ = (long)(bp + offset);
+            // add_local()/local_offset are BYTE offsets (Symbol.type_size is
+            // 1 for char, 8 for int/long/pointer; OP_ENTER above reserves
+            // (nlocals_bytes+7)/8 slots to match). `bp` is a long*, so plain
+            // pointer arithmetic (bp + offset) scaled offset by another 8 --
+            // e.g. the second int local (byte offset 8) resolved to bp+8
+            // longs = 64 bytes away instead of bp+1 long = 8 bytes away.
+            // Every local/parameter read or write landed on the wrong slot.
+            // Casting to char* first makes the addition byte-exact, matching
+            // OP_GLOBAL's (already-correct) `s->data + offset` below.
+            *sp++ = (long)((char*)bp + offset);
             break;
         }
 
